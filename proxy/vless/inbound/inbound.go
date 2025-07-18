@@ -506,19 +506,22 @@ func (h *Handler) Process(ctx context.Context, network net.Network, connection s
 	mapLock.Lock()
 	user_info, find := usersMap[request.User.Email]
 	if !find {
-		user_info = &userInfo{}
+		spList := strings.Split(request.User.Email, "@")
+		user_info = &userInfo{
+			isLimit: spList[len(spList)-1] == "limit",
+		}
 		usersMap[request.User.Email] = user_info
 	}
 	mapLock.Unlock()
 
 	user_info.access.Lock()
-	if user_info.serverReader != nil || user_info.serverWriter != nil {
+	if user_info.isLimit && (user_info.serverReader != nil || user_info.serverWriter != nil) {
 		common.Interrupt(user_info.serverReader)
 		common.Interrupt(user_info.serverWriter)
 		user_info.access.Unlock()
 		return nil
 	}
-	if time.Since(user_info.blockTime).Seconds() < 11 {
+	if user_info.isLimit && (time.Since(user_info.blockTime).Seconds() < 11) {
 		user_info.access.Unlock()
 		return nil
 	}
@@ -642,6 +645,7 @@ func (h *Handler) Process(ctx context.Context, network net.Network, connection s
 
 type userInfo struct {
 	access       sync.Mutex
+	isLimit      bool
 	blockTime    time.Time
 	serverReader buf.Reader
 	serverWriter buf.Writer
