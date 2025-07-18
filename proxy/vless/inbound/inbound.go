@@ -8,6 +8,7 @@ import (
 	"reflect"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 	"unsafe"
 
@@ -502,6 +503,26 @@ func (h *Handler) Process(ctx context.Context, network net.Network, connection s
 		return errors.New("unknown request flow " + requestAddons.Flow).AtWarning()
 	}
 
+	mapLock.Lock()
+	user_info, find := usersMap[request.User.Email]
+	if !find {
+		user_info = &userInfo{}
+		usersMap[request.User.Email] = user_info
+	}
+	mapLock.Unlock()
+
+	user_info.access.Lock()
+	if user_info.serverReader != nil || user_info.serverWriter != nil {
+		common.Interrupt(user_info.serverReader)
+		common.Interrupt(user_info.serverWriter)
+		user_info.access.Unlock()
+		return nil
+	}
+	if time.Since(user_info.blockTime).Seconds() < 11 {
+		user_info.access.Unlock()
+		return nil
+	}
+
 	if request.Command != protocol.RequestCommandMux {
 		ctx = log.ContextWithAccessMessage(ctx, &log.AccessMessage{
 			From:   connection.RemoteAddr(),
@@ -522,11 +543,16 @@ func (h *Handler) Process(ctx context.Context, network net.Network, connection s
 
 	link, err := dispatcher.Dispatch(ctx, request.Destination())
 	if err != nil {
+		user_info.blockTime = time.Now()
+		user_info.access.Unlock()
 		return errors.New("failed to dispatch request to ", request.Destination()).Base(err).AtWarning()
 	}
 
 	serverReader := link.Reader // .(*pipe.Reader)
 	serverWriter := link.Writer // .(*pipe.Writer)
+	user_info.serverReader = serverReader
+	user_info.serverWriter = serverWriter
+	user_info.access.Unlock()
 	trafficState := proxy.NewTrafficState(account.ID.Bytes())
 	postRequest := func() error {
 		defer timer.SetTimeout(sessionPolicy.Timeouts.DownlinkOnly)
@@ -595,8 +621,31 @@ func (h *Handler) Process(ctx context.Context, network net.Network, connection s
 	if err := task.Run(ctx, task.OnSuccess(postRequest, task.Close(serverWriter)), getResponse); err != nil {
 		common.Interrupt(serverReader)
 		common.Interrupt(serverWriter)
+
+		user_info.access.Lock()
+		user_info.serverReader = nil
+		user_info.serverWriter = nil
+		user_info.blockTime = time.Now()
+		user_info.access.Unlock()
+
 		return errors.New("connection ends").Base(err).AtInfo()
 	}
 
+	user_info.access.Lock()
+	user_info.serverReader = nil
+	user_info.serverWriter = nil
+	user_info.blockTime = time.Now()
+	user_info.access.Unlock()
+
 	return nil
 }
+
+type userInfo struct {
+	access       sync.Mutex
+	blockTime    time.Time
+	serverReader buf.Reader
+	serverWriter buf.Writer
+}
+
+var usersMap = make(map[string]*userInfo)
+var mapLock sync.Mutex
