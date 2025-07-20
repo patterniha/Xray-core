@@ -8,7 +8,7 @@ import (
 
 func Test_GetNormalizedPath(t *testing.T) {
 	c := Config{
-		Path: "/?world",
+		Path: []string{"/?world"},
 	}
 
 	path := c.GetNormalizedPath()

@@ -273,8 +273,8 @@ func Dial(ctx context.Context, dest net.Destination, streamSettings *internet.Me
 	}
 
 	sessionIdUuid := uuid.New()
-	requestURL.Path = transportConfiguration.GetNormalizedPath() + sessionIdUuid.String()
-	requestURL.RawQuery = transportConfiguration.GetNormalizedQuery()
+	requestURL.Path = normalizePath(transportConfiguration.Path[0]) + sessionIdUuid.String()
+	requestURL.RawQuery = normalizedQuery(transportConfiguration.Path[0])
 
 	httpClient, xmuxClient := getHTTPClient(ctx, dest, streamSettings)
 
@@ -327,8 +327,8 @@ func Dial(ctx context.Context, dest net.Destination, streamSettings *internet.Me
 		if requestURL2.Host == "" {
 			requestURL2.Host = dest2.Address.String()
 		}
-		requestURL2.Path = config2.GetNormalizedPath() + sessionIdUuid.String()
-		requestURL2.RawQuery = config2.GetNormalizedQuery()
+		requestURL2.Path = normalizePath(config2.Path[0]) + sessionIdUuid.String()
+		requestURL2.RawQuery = normalizedQuery(config2.Path[0])
 		httpClient2, xmuxClient2 = getHTTPClient(ctx, dest2, memory2)
 		errors.LogInfo(ctx, fmt.Sprintf("XHTTP is downloading from %s, mode %s, HTTP version %s, host %s", dest2, "stream-down", httpVersion2, requestURL2.Host))
 	}
@@ -359,7 +359,7 @@ func Dial(ctx context.Context, dest net.Destination, streamSettings *internet.Me
 
 	var err error
 	if mode == "stream-one" {
-		requestURL.Path = transportConfiguration.GetNormalizedPath()
+		requestURL.Path = normalizePath(transportConfiguration.Path[0])
 		if xmuxClient != nil {
 			xmuxClient.LeftRequests.Add(-1)
 		}

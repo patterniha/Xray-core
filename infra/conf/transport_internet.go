@@ -222,7 +222,7 @@ func (c *HttpUpgradeConfig) Build() (proto.Message, error) {
 
 type SplitHTTPConfig struct {
 	Host                 string            `json:"host"`
-	Path                 string            `json:"path"`
+	Path                 []string          `json:"path"`
 	Mode                 string            `json:"mode"`
 	Headers              map[string]string `json:"headers"`
 	XPaddingBytes        Int32Range        `json:"xPaddingBytes"`
@@ -255,6 +255,9 @@ func newRangeConfig(input Int32Range) *splithttp.RangeConfig {
 
 // Build implements Buildable.
 func (c *SplitHTTPConfig) Build() (proto.Message, error) {
+	if len(c.Path) == 0 {
+		c.Path = []string{"/"}
+	}
 	if c.Extra != nil {
 		var extra SplitHTTPConfig
 		if err := json.Unmarshal(c.Extra, &extra); err != nil {

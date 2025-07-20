@@ -26,10 +26,17 @@ import (
 	"github.com/xtls/xray-core/transport/internet/tls"
 )
 
+type user struct {
+	isLimit   bool
+	access    sync.Mutex
+	blockTime time.Time
+	cancel    context.CancelFunc
+}
+
 type requestHandler struct {
 	config    *Config
 	host      string
-	path      string
+	users     map[string]*user
 	ln        *Listener
 	sessionMu *sync.Mutex
 	sessions  sync.Map
@@ -92,10 +99,78 @@ func (h *requestHandler) ServeHTTP(writer http.ResponseWriter, request *http.Req
 		return
 	}
 
-	if !strings.HasPrefix(request.URL.Path, h.path) {
-		errors.LogInfo(context.Background(), "failed to validate path, request:", request.URL.Path, ", config:", h.path)
+	var cUser *user
+	var cUserID string
+	for iUserID, iUser := range h.users {
+		if strings.HasPrefix(request.URL.Path, iUserID) {
+			cUser = iUser
+			cUserID = iUserID
+			break
+		}
+	}
+
+	if cUser == nil || cUserID == "" {
+		errors.LogInfo(context.Background(), "failed to validate path, request:", request.URL.Path)
 		writer.WriteHeader(http.StatusNotFound)
 		return
+	}
+
+	subpath := strings.Split(request.URL.Path[len(cUserID):], "/")
+	sessionId := ""
+	if len(subpath) > 0 {
+		sessionId = subpath[0]
+	}
+	seq := ""
+	if len(subpath) > 1 {
+		seq = subpath[1]
+	}
+
+	if sessionId == "" && h.config.Mode != "" && h.config.Mode != "auto" && h.config.Mode != "stream-one" && h.config.Mode != "stream-up" {
+		errors.LogInfo(context.Background(), "stream-one mode is not allowed")
+		writer.WriteHeader(http.StatusBadRequest)
+		return
+	}
+
+	requestType := ""
+	if request.Method == "POST" && sessionId == "" && seq == "" {
+		requestType = "stream-one"
+	} else if request.Method == "POST" && sessionId != "" && seq == "" {
+		requestType = "stream-up"
+	} else if request.Method == "POST" && sessionId != "" && seq != "" {
+		requestType = "packet-up"
+	} else if request.Method == "GET" && sessionId != "" && seq == "" {
+		requestType = "stream-down"
+	} else {
+		errors.LogInfo(context.Background(), "request type is not allowed", requestType)
+		writer.WriteHeader(http.StatusBadRequest)
+		return
+	}
+
+	newCtx, newCancel := context.WithCancel(request.Context())
+	defer newCancel()
+
+	if cUser.isLimit {
+		cUser.access.Lock()
+		if cUser.cancel != nil {
+			cUser.cancel()
+			writer.WriteHeader(http.StatusNotFound)
+			cUser.blockTime = time.Now()
+			cUser.access.Unlock()
+			return
+		}
+		if time.Since(cUser.blockTime).Seconds() < 11 {
+			writer.WriteHeader(http.StatusNotFound)
+			cUser.access.Unlock()
+			return
+		}
+		cUser.cancel = newCancel
+		defer func() {
+			cUser.access.Lock()
+			cUser.cancel()
+			cUser.cancel = nil
+			cUser.access.Unlock()
+		}()
+		cUser.access.Unlock()
 	}
 
 	h.config.WriteResponseHeader(writer)
@@ -123,18 +198,6 @@ func (h *requestHandler) ServeHTTP(writer http.ResponseWriter, request *http.Req
 
 	if int32(paddingLength) < validRange.From || int32(paddingLength) > validRange.To {
 		errors.LogInfo(context.Background(), "invalid x_padding length:", int32(paddingLength))
-		writer.WriteHeader(http.StatusBadRequest)
-		return
-	}
-
-	sessionId := ""
-	subpath := strings.Split(request.URL.Path[len(h.path):], "/")
-	if len(subpath) > 0 {
-		sessionId = subpath[0]
-	}
-
-	if sessionId == "" && h.config.Mode != "" && h.config.Mode != "auto" && h.config.Mode != "stream-one" && h.config.Mode != "stream-up" {
-		errors.LogInfo(context.Background(), "stream-one mode is not allowed")
 		writer.WriteHeader(http.StatusBadRequest)
 		return
 	}
@@ -168,13 +231,9 @@ func (h *requestHandler) ServeHTTP(writer http.ResponseWriter, request *http.Req
 	}
 	scMaxEachPostBytes := int(h.ln.config.GetNormalizedScMaxEachPostBytes().To)
 
-	if request.Method == "POST" && sessionId != "" { // stream-up, packet-up
-		seq := ""
-		if len(subpath) > 1 {
-			seq = subpath[1]
-		}
+	if requestType == "stream-up" || requestType == "packet-up" { // stream-up, packet-up
 
-		if seq == "" {
+		if requestType == "stream-up" {
 			if h.config.Mode != "" && h.config.Mode != "auto" && h.config.Mode != "stream-up" {
 				errors.LogInfo(context.Background(), "stream-up mode is not allowed")
 				writer.WriteHeader(http.StatusBadRequest)
@@ -208,7 +267,7 @@ func (h *requestHandler) ServeHTTP(writer http.ResponseWriter, request *http.Req
 					}()
 				}
 				select {
-				case <-request.Context().Done():
+				case <-newCtx.Done():
 				case <-httpSC.Wait():
 				}
 			}
@@ -255,8 +314,8 @@ func (h *requestHandler) ServeHTTP(writer http.ResponseWriter, request *http.Req
 		}
 
 		writer.WriteHeader(http.StatusOK)
-	} else if request.Method == "GET" || sessionId == "" { // stream-down, stream-one
-		if sessionId != "" {
+	} else if requestType == "stream-down" || requestType == "stream-one" { // stream-down, stream-one
+		if requestType == "stream-down" {
 			// after GET is done, the connection is finished. disable automatic
 			// session reaping, and handle it in defer
 			currentSession.isFullyConnected.Close()
@@ -297,7 +356,7 @@ func (h *requestHandler) ServeHTTP(writer http.ResponseWriter, request *http.Req
 
 		// "A ResponseWriter may not be used after [Handler.ServeHTTP] has returned."
 		select {
-		case <-request.Context().Done():
+		case <-newCtx.Done():
 		case <-httpSC.Wait():
 		}
 
@@ -355,10 +414,37 @@ func ListenXH(ctx context.Context, address net.Address, port net.Port, streamSet
 			streamSettings.SocketSettings = &internet.SocketConfig{}
 		}
 	}
+
+	users := make(map[string]*user, len(l.config.Path))
+	for _, rawPath := range l.config.Path {
+		nPath := normalizePath(rawPath)
+		nQuery := normalizedQuery(rawPath)
+		var isLimit bool
+		if nQuery == "limit=1" {
+			isLimit = true
+		} else if nQuery == "limit=0" {
+			isLimit = false
+		} else {
+			panic("incorrect limit query")
+		}
+		users[nPath] = &user{
+			isLimit:   isLimit,
+			blockTime: time.Now(),
+		}
+	}
+
+	for path1, _ := range users {
+		for path2, _ := range users {
+			if path1 != path2 && (strings.HasPrefix(path1, path2) || strings.HasPrefix(path2, path1)) {
+				panic("inconsistent paths")
+			}
+		}
+	}
+
 	handler := &requestHandler{
 		config:    l.config,
 		host:      l.config.Host,
-		path:      l.config.GetNormalizedPath(),
+		users:     users,
 		ln:        l,
 		sessionMu: &sync.Mutex{},
 		sessions:  sync.Map{},
