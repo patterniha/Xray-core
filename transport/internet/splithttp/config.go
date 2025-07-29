@@ -10,8 +10,8 @@ import (
 	"github.com/xtls/xray-core/transport/internet"
 )
 
-func (c *Config) GetNormalizedPath() string {
-	pathAndQuery := strings.SplitN(c.Path, "?", 2)
+func normalizePath(rawPath string) string {
+	pathAndQuery := strings.SplitN(rawPath, "?", 2)
 	path := pathAndQuery[0]
 
 	if path == "" || path[0] != '/' {
@@ -25,8 +25,8 @@ func (c *Config) GetNormalizedPath() string {
 	return path
 }
 
-func (c *Config) GetNormalizedQuery() string {
-	pathAndQuery := strings.SplitN(c.Path, "?", 2)
+func normalizedQuery(rawPath string) string {
+	pathAndQuery := strings.SplitN(rawPath, "?", 2)
 	query := ""
 
 	if len(pathAndQuery) > 1 {

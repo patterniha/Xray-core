@@ -26,10 +26,107 @@ import (
 	"github.com/xtls/xray-core/transport/internet/tls"
 )
 
+type user struct {
+	isLimit    bool
+	cleaning   bool
+	access     sync.Mutex
+	blockTime  time.Time
+	cancelMap  map[uint64]context.CancelFunc
+	downID     string
+	upID       string
+	requestNum uint64
+}
+
+func (u *user) isAbuse(requestType string, limitID string) bool {
+	if u.cleaning {
+		return true
+	}
+	if len(u.cancelMap) == 0 {
+		return false
+	}
+	if requestType == "stream-one" {
+		if u.downID != limitID || u.upID != limitID {
+			return true
+		}
+		return false
+	}
+	if requestType == "stream-up" || requestType == "packet-up" {
+		if u.upID != "" && u.upID != limitID {
+			return true
+		}
+		return false
+	}
+	if requestType == "stream-down" {
+		if u.downID != "" && u.downID != limitID {
+			return true
+		}
+		return false
+	}
+	panic("unreachable")
+}
+
+func (u *user) setUpDown(requestType string, limitID string) {
+	if requestType == "stream-one" {
+		u.upID = limitID
+		u.downID = limitID
+	} else if requestType == "stream-up" || requestType == "packet-up" {
+		u.upID = limitID
+	} else if requestType == "stream-down" {
+		u.downID = limitID
+	} else {
+		panic("unreachable")
+	}
+}
+
+func (u *user) closeAll() {
+	for _, cancel := range u.cancelMap {
+		cancel()
+	}
+}
+func (u *user) tryReset() {
+	if len(u.cancelMap) == 0 {
+		u.downID = ""
+		u.upID = ""
+		if u.cleaning {
+			u.cleaning = false
+			u.blockTime = time.Now()
+		}
+	}
+}
+
+func parseAndCheckAddr(request *http.Request) (net.Addr, bool) {
+	forwardedAddrs := http_proto.ParseXForwardedFor(request.Header)
+	var remoteAddr net.Addr
+	remoteAddr, err := net.ResolveTCPAddr("tcp", request.RemoteAddr)
+	if err != nil {
+		remoteAddr = &net.TCPAddr{
+			IP:   []byte{0, 0, 0, 0},
+			Port: 0,
+		}
+	}
+	if request.ProtoMajor == 3 {
+		remoteAddr = &net.UDPAddr{
+			IP:   remoteAddr.(*net.TCPAddr).IP,
+			Port: remoteAddr.(*net.TCPAddr).Port,
+		}
+	}
+	if len(forwardedAddrs) > 0 && forwardedAddrs[0].Family().IsIP() {
+		remoteAddr = &net.TCPAddr{
+			IP:   forwardedAddrs[0].IP(),
+			Port: 0,
+		}
+	}
+
+	remoteAddrA, errA := net.ParseDestination(request.RemoteAddr)
+	if errA != nil || remoteAddrA.Port == net.Port(0) || remoteAddrA.Address == net.AnyIP || remoteAddrA.Address == net.AnyIPv6 {
+	}
+
+}
+
 type requestHandler struct {
 	config    *Config
 	host      string
-	path      string
+	users     map[string]*user
 	ln        *Listener
 	sessionMu *sync.Mutex
 	sessions  sync.Map
@@ -92,21 +189,21 @@ func (h *requestHandler) ServeHTTP(writer http.ResponseWriter, request *http.Req
 		return
 	}
 
-	if !strings.HasPrefix(request.URL.Path, h.path) {
-		errors.LogInfo(context.Background(), "failed to validate path, request:", request.URL.Path, ", config:", h.path)
+	var cUser *user
+	var cUserID string
+	for iUserID, iUser := range h.users {
+		if strings.HasPrefix(request.URL.Path, iUserID) {
+			cUser = iUser
+			cUserID = iUserID
+			break
+		}
+	}
+
+	if cUser == nil || cUserID == "" {
+		errors.LogInfo(context.Background(), "failed to validate path, request:", request.URL.Path)
 		writer.WriteHeader(http.StatusNotFound)
 		return
 	}
-
-	h.config.WriteResponseHeader(writer)
-
-	/*
-		clientVer := []int{0, 0, 0}
-		x_version := strings.Split(request.URL.Query().Get("x_version"), ".")
-		for j := 0; j < 3 && len(x_version) > j; j++ {
-			clientVer[j], _ = strconv.Atoi(x_version[j])
-		}
-	*/
 
 	validRange := h.config.GetNormalizedXPaddingBytes()
 	paddingLength := 0
@@ -127,10 +224,14 @@ func (h *requestHandler) ServeHTTP(writer http.ResponseWriter, request *http.Req
 		return
 	}
 
+	subpath := strings.Split(request.URL.Path[len(cUserID):], "/")
 	sessionId := ""
-	subpath := strings.Split(request.URL.Path[len(h.path):], "/")
 	if len(subpath) > 0 {
 		sessionId = subpath[0]
+	}
+	seq := ""
+	if len(subpath) > 1 {
+		seq = subpath[1]
 	}
 
 	if sessionId == "" && h.config.Mode != "" && h.config.Mode != "auto" && h.config.Mode != "stream-one" && h.config.Mode != "stream-up" {
@@ -139,28 +240,72 @@ func (h *requestHandler) ServeHTTP(writer http.ResponseWriter, request *http.Req
 		return
 	}
 
-	forwardedAddrs := http_proto.ParseXForwardedFor(request.Header)
-	var remoteAddr net.Addr
-	var err error
-	remoteAddr, err = net.ResolveTCPAddr("tcp", request.RemoteAddr)
-	if err != nil {
-		remoteAddr = &net.TCPAddr{
-			IP:   []byte{0, 0, 0, 0},
-			Port: 0,
-		}
+	requestType := ""
+	if request.Method == "POST" && sessionId == "" && seq == "" {
+		requestType = "stream-one"
+	} else if request.Method == "POST" && sessionId != "" && seq == "" {
+		requestType = "stream-up"
+	} else if request.Method == "POST" && sessionId != "" && seq != "" {
+		requestType = "packet-up"
+	} else if request.Method == "GET" && sessionId != "" && seq == "" {
+		requestType = "stream-down"
+	} else {
+		errors.LogInfo(context.Background(), "request type is not allowed", requestType)
+		writer.WriteHeader(http.StatusBadRequest)
+		return
 	}
-	if request.ProtoMajor == 3 {
-		remoteAddr = &net.UDPAddr{
-			IP:   remoteAddr.(*net.TCPAddr).IP,
-			Port: remoteAddr.(*net.TCPAddr).Port,
+
+	newCtx, newCancel := context.WithCancel(request.Context())
+	defer newCancel()
+
+	remoteAddr, limitable := parseAndCheckAddr(request)
+
+	if cUser.isLimit {
+		if !limitable {
+			errors.LogError(context.Background(), "unable to limit", request.RemoteAddr, "for user", cUserID)
+			writer.WriteHeader(http.StatusBadRequest)
+			return
 		}
-	}
-	if len(forwardedAddrs) > 0 && forwardedAddrs[0].Family().IsIP() {
-		remoteAddr = &net.TCPAddr{
-			IP:   forwardedAddrs[0].IP(),
-			Port: 0,
+		limitID := request.RemoteAddr + "$" + requestType
+		cUser.access.Lock()
+		if cUser.isAbuse(requestType, limitID) {
+			cUser.cleaning = true
+			cUser.closeAll()
+			writer.WriteHeader(http.StatusNotFound)
+			cUser.access.Unlock()
+			return
 		}
+		if time.Since(cUser.blockTime).Seconds() < 11 {
+			if len(cUser.cancelMap) != 0 {
+				panic("impossible")
+			}
+			writer.WriteHeader(http.StatusNotFound)
+			cUser.access.Unlock()
+			return
+		}
+		cUser.requestNum++
+		thisNum := cUser.requestNum
+		cUser.cancelMap[thisNum] = newCancel
+		cUser.setUpDown(requestType, limitID)
+		defer func() {
+			cUser.access.Lock()
+			cUser.cancelMap[thisNum]()
+			delete(cUser.cancelMap, thisNum)
+			cUser.tryReset()
+			cUser.access.Unlock()
+		}()
+		cUser.access.Unlock()
 	}
+
+	h.config.WriteResponseHeader(writer)
+
+	/*
+		clientVer := []int{0, 0, 0}
+		x_version := strings.Split(request.URL.Query().Get("x_version"), ".")
+		for j := 0; j < 3 && len(x_version) > j; j++ {
+			clientVer[j], _ = strconv.Atoi(x_version[j])
+		}
+	*/
 
 	var currentSession *httpSession
 	if sessionId != "" {
@@ -168,53 +313,49 @@ func (h *requestHandler) ServeHTTP(writer http.ResponseWriter, request *http.Req
 	}
 	scMaxEachPostBytes := int(h.ln.config.GetNormalizedScMaxEachPostBytes().To)
 
-	if request.Method == "POST" && sessionId != "" { // stream-up, packet-up
-		seq := ""
-		if len(subpath) > 1 {
-			seq = subpath[1]
-		}
-
-		if seq == "" {
-			if h.config.Mode != "" && h.config.Mode != "auto" && h.config.Mode != "stream-up" {
-				errors.LogInfo(context.Background(), "stream-up mode is not allowed")
-				writer.WriteHeader(http.StatusBadRequest)
-				return
-			}
-			httpSC := &httpServerConn{
-				Instance:       done.New(),
-				Reader:         request.Body,
-				ResponseWriter: writer,
-			}
-			err = currentSession.uploadQueue.Push(Packet{
-				Reader: httpSC,
-			})
-			if err != nil {
-				errors.LogInfoInner(context.Background(), err, "failed to upload (PushReader)")
-				writer.WriteHeader(http.StatusConflict)
-			} else {
-				writer.Header().Set("X-Accel-Buffering", "no")
-				writer.Header().Set("Cache-Control", "no-store")
-				writer.WriteHeader(http.StatusOK)
-				scStreamUpServerSecs := h.config.GetNormalizedScStreamUpServerSecs()
-				if referrer != "" && scStreamUpServerSecs.To > 0 {
-					go func() {
-						for {
-							_, err := httpSC.Write(bytes.Repeat([]byte{'X'}, int(h.config.GetNormalizedXPaddingBytes().rand())))
-							if err != nil {
-								break
-							}
-							time.Sleep(time.Duration(scStreamUpServerSecs.rand()) * time.Second)
-						}
-					}()
-				}
-				select {
-				case <-request.Context().Done():
-				case <-httpSC.Wait():
-				}
-			}
-			httpSC.Close()
+	if requestType == "stream-up" {
+		if h.config.Mode != "" && h.config.Mode != "auto" && h.config.Mode != "stream-up" {
+			errors.LogInfo(context.Background(), "stream-up mode is not allowed")
+			writer.WriteHeader(http.StatusBadRequest)
 			return
 		}
+		httpSC := &httpServerConn{
+			Instance:       done.New(),
+			Reader:         request.Body,
+			ResponseWriter: writer,
+		}
+		err := currentSession.uploadQueue.Push(Packet{
+			Reader: httpSC,
+		})
+		if err != nil {
+			errors.LogInfoInner(context.Background(), err, "failed to upload (PushReader)")
+			writer.WriteHeader(http.StatusConflict)
+		} else {
+			writer.Header().Set("X-Accel-Buffering", "no")
+			writer.Header().Set("Cache-Control", "no-store")
+			writer.WriteHeader(http.StatusOK)
+			scStreamUpServerSecs := h.config.GetNormalizedScStreamUpServerSecs()
+			if referrer != "" && scStreamUpServerSecs.To > 0 {
+				go func() {
+					for {
+						_, err := httpSC.Write(bytes.Repeat([]byte{'X'}, int(h.config.GetNormalizedXPaddingBytes().rand())))
+						if err != nil {
+							break
+						}
+						time.Sleep(time.Duration(scStreamUpServerSecs.rand()) * time.Second)
+					}
+				}()
+			}
+			select {
+			case <-newCtx.Done():
+			case <-httpSC.Wait():
+			}
+		}
+		httpSC.Close()
+		return
+	}
+
+	if requestType == "packet-up" { //  packet-up
 
 		if h.config.Mode != "" && h.config.Mode != "auto" && h.config.Mode != "packet-up" {
 			errors.LogInfo(context.Background(), "packet-up mode is not allowed")
@@ -255,8 +396,10 @@ func (h *requestHandler) ServeHTTP(writer http.ResponseWriter, request *http.Req
 		}
 
 		writer.WriteHeader(http.StatusOK)
-	} else if request.Method == "GET" || sessionId == "" { // stream-down, stream-one
-		if sessionId != "" {
+		return
+	}
+	if requestType == "stream-down" || requestType == "stream-one" { // stream-down, stream-one
+		if requestType == "stream-down" {
 			// after GET is done, the connection is finished. disable automatic
 			// session reaping, and handle it in defer
 			currentSession.isFullyConnected.Close()
@@ -297,15 +440,17 @@ func (h *requestHandler) ServeHTTP(writer http.ResponseWriter, request *http.Req
 
 		// "A ResponseWriter may not be used after [Handler.ServeHTTP] has returned."
 		select {
-		case <-request.Context().Done():
+		case <-newCtx.Done():
 		case <-httpSC.Wait():
 		}
 
 		conn.Close()
-	} else {
-		errors.LogInfo(context.Background(), "unsupported method: ", request.Method)
-		writer.WriteHeader(http.StatusMethodNotAllowed)
+		return
 	}
+
+	errors.LogInfo(context.Background(), "unsupported method: ", request.Method)
+	writer.WriteHeader(http.StatusMethodNotAllowed)
+
 }
 
 type httpServerConn struct {
@@ -355,10 +500,42 @@ func ListenXH(ctx context.Context, address net.Address, port net.Port, streamSet
 			streamSettings.SocketSettings = &internet.SocketConfig{}
 		}
 	}
+
+	users := make(map[string]*user, len(l.config.Path))
+	for _, rawPath := range l.config.Path {
+		nPath := normalizePath(rawPath)
+		nQuery := normalizedQuery(rawPath)
+		var isLimit bool
+		if nQuery == "limit=1" {
+			isLimit = true
+		} else if nQuery == "limit=0" {
+			isLimit = false
+		} else {
+			panic("incorrect limit query")
+		}
+		_, find := users[nPath]
+		if find {
+			panic("repeated user")
+		}
+		users[nPath] = &user{
+			isLimit:   isLimit,
+			blockTime: time.Now(),
+			cancelMap: make(map[uint64]context.CancelFunc, 32),
+		}
+	}
+
+	for path1, _ := range users {
+		for path2, _ := range users {
+			if path1 != path2 && (strings.HasPrefix(path1, path2) || strings.HasPrefix(path2, path1)) {
+				panic("inconsistent paths")
+			}
+		}
+	}
+
 	handler := &requestHandler{
 		config:    l.config,
 		host:      l.config.Host,
-		path:      l.config.GetNormalizedPath(),
+		users:     users,
 		ln:        l,
 		sessionMu: &sync.Mutex{},
 		sessions:  sync.Map{},
