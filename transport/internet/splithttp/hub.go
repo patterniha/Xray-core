@@ -27,74 +27,64 @@ import (
 )
 
 type user struct {
-	isLimit    bool
-	cleaning   bool
-	access     sync.Mutex
-	blockTime  time.Time
-	cancelMap  map[uint64]context.CancelFunc
-	downID     string
-	upID       string
-	requestNum uint64
+	isLimit   bool
+	access    sync.Mutex
+	blockTime time.Time
+	sessions  map[string]*httpSession
 }
 
-func (u *user) isAbuse(requestType string, limitID string) bool {
-	if u.cleaning {
-		return true
+func (u *user) checkInLock() {
+	if u.access.TryLock() {
+		panic("abuse should be run in lock")
 	}
-	if len(u.cancelMap) == 0 {
-		return false
-	}
-	if requestType == "stream-one" {
-		if u.downID != limitID || u.upID != limitID {
-			return true
-		}
-		return false
-	}
-	if requestType == "stream-up" || requestType == "packet-up" {
-		if u.upID != "" && u.upID != limitID {
-			return true
-		}
-		return false
-	}
-	if requestType == "stream-down" {
-		if u.downID != "" && u.downID != limitID {
-			return true
-		}
-		return false
-	}
-	panic("unreachable")
 }
 
-func (u *user) setUpDown(requestType string, limitID string) {
+func (u *user) abuse() {
+	u.checkInLock()
+	for _, session := range u.sessions {
+		session.close()
+	}
+	u.sessions = make(map[string]*httpSession, 32)
+	u.blockTime = time.Now().Add(11 * time.Second)
+}
+
+func (u *user) isAbuse(requestType string, addr string) bool {
+	u.checkInLock()
+	if len(u.sessions) == 0 {
+		return false
+	}
+	downAddr := ""
+	upAddr := ""
+	upType := ""
 	if requestType == "stream-one" {
-		u.upID = limitID
-		u.downID = limitID
-	} else if requestType == "stream-up" || requestType == "packet-up" {
-		u.upID = limitID
+		downAddr = addr
+		upAddr = addr
+		upType = requestType
+
+	} else if requestType == "stream-up" {
+		upAddr = addr
+		upType = requestType
+	} else if requestType == "packet-up" {
+		upAddr = addr
+		upType = requestType
 	} else if requestType == "stream-down" {
-		u.downID = limitID
-	} else {
-		panic("unreachable")
+		downAddr = addr
 	}
-}
 
-func (u *user) closeAll() {
-	for _, cancel := range u.cancelMap {
-		cancel()
-	}
-}
-func (u *user) tryReset() {
-	if len(u.cancelMap) == 0 {
-		u.downID = ""
-		u.upID = ""
-		if u.cleaning {
-			u.cleaning = false
-			u.blockTime = time.Now()
+	for _, session := range u.sessions {
+		if downAddr != "" && session.downAddr != "" && downAddr != session.downAddr {
+			u.abuse()
+			return true
+		}
+		if upAddr != "" && session.upAddr != "" && (upAddr != session.upAddr || upType != session.upType) {
+			u.abuse()
+			return true
 		}
 	}
+	return false
 }
 
-func parseAndCheckAddr(request *http.Request) (net.Addr, bool) {
+func parseAndCheckAddr(request *http.Request) net.Addr {
 	forwardedAddrs := http_proto.ParseXForwardedFor(request.Header)
 	var remoteAddr net.Addr
 	remoteAddr, err := net.ResolveTCPAddr("tcp", request.RemoteAddr)
@@ -108,6 +98,7 @@ func parseAndCheckAddr(request *http.Request) (net.Addr, bool) {
 		remoteAddr = &net.UDPAddr{
 			IP:   remoteAddr.(*net.TCPAddr).IP,
 			Port: remoteAddr.(*net.TCPAddr).Port,
+			Zone: remoteAddr.(*net.TCPAddr).Zone,
 		}
 	}
 	if len(forwardedAddrs) > 0 && forwardedAddrs[0].Family().IsIP() {
@@ -116,11 +107,7 @@ func parseAndCheckAddr(request *http.Request) (net.Addr, bool) {
 			Port: 0,
 		}
 	}
-
-	remoteAddrA, errA := net.ParseDestination(request.RemoteAddr)
-	if errA != nil || remoteAddrA.Port == net.Port(0) || remoteAddrA.Address == net.AnyIP || remoteAddrA.Address == net.AnyIPv6 {
-	}
-
+	return remoteAddr
 }
 
 type requestHandler struct {
@@ -128,13 +115,17 @@ type requestHandler struct {
 	host      string
 	users     map[string]*user
 	ln        *Listener
-	sessionMu *sync.Mutex
-	sessions  sync.Map
 	localAddr net.Addr
 }
 
 type httpSession struct {
 	uploadQueue *uploadQueue
+	cancels     []context.CancelFunc
+	access      sync.Mutex
+	cUser       *user
+	upAddr      string
+	downAddr    string
+	upType      string
 	// for as long as the GET request is not opened by the client, this will be
 	// open ("undone"), and the session may be expired within a certain TTL.
 	// after the client connects, this becomes "done" and the session lives as
@@ -142,7 +133,18 @@ type httpSession struct {
 	isFullyConnected *done.Instance
 }
 
-func (h *requestHandler) upsertSession(sessionId string) *httpSession {
+func (h *httpSession) close() {
+	h.access.Lock()
+	defer h.access.Unlock()
+	for _, cancel := range h.cancels {
+		cancel()
+	}
+	if h.uploadQueue != nil {
+		h.uploadQueue.Close()
+	}
+}
+
+func (h *requestHandler) upsertSession(sessionId string, cUser *user, cancel context.CancelFunc) *httpSession {
 	// fast path
 	currentSessionAny, ok := h.sessions.Load(sessionId)
 	if ok {
@@ -167,14 +169,14 @@ func (h *requestHandler) upsertSession(sessionId string) *httpSession {
 
 	shouldReap := done.New()
 	go func() {
-		time.Sleep(30 * time.Second)
+		time.Sleep(5 * time.Second)
 		shouldReap.Close()
 	}()
 	go func() {
 		select {
 		case <-shouldReap.Wait():
+			s.close(true)
 			h.sessions.Delete(sessionId)
-			s.uploadQueue.Close()
 		case <-s.isFullyConnected.Wait():
 		}
 	}()
@@ -204,6 +206,14 @@ func (h *requestHandler) ServeHTTP(writer http.ResponseWriter, request *http.Req
 		writer.WriteHeader(http.StatusNotFound)
 		return
 	}
+	cUser.access.Lock()
+	cUser.activeReqNum++
+	cUser.access.Unlock()
+	defer func() {
+		cUser.access.Lock()
+		cUser.activeReqNum--
+		cUser.access.Unlock()
+	}()
 
 	validRange := h.config.GetNormalizedXPaddingBytes()
 	paddingLength := 0
@@ -258,18 +268,13 @@ func (h *requestHandler) ServeHTTP(writer http.ResponseWriter, request *http.Req
 	newCtx, newCancel := context.WithCancel(request.Context())
 	defer newCancel()
 
-	remoteAddr, limitable := parseAndCheckAddr(request)
+	remoteAddr := parseAndCheckAddr(request)
 
 	if cUser.isLimit {
-		if !limitable {
-			errors.LogError(context.Background(), "unable to limit", request.RemoteAddr, "for user", cUserID)
-			writer.WriteHeader(http.StatusBadRequest)
-			return
-		}
 		limitID := request.RemoteAddr + "$" + requestType
 		cUser.access.Lock()
 		if cUser.isAbuse(requestType, limitID) {
-			cUser.cleaning = true
+			cUser.abusing = true
 			cUser.closeAll()
 			writer.WriteHeader(http.StatusNotFound)
 			cUser.access.Unlock()
@@ -311,6 +316,7 @@ func (h *requestHandler) ServeHTTP(writer http.ResponseWriter, request *http.Req
 	if sessionId != "" {
 		currentSession = h.upsertSession(sessionId)
 	}
+
 	scMaxEachPostBytes := int(h.ln.config.GetNormalizedScMaxEachPostBytes().To)
 
 	if requestType == "stream-up" {
@@ -404,6 +410,7 @@ func (h *requestHandler) ServeHTTP(writer http.ResponseWriter, request *http.Req
 			// session reaping, and handle it in defer
 			currentSession.isFullyConnected.Close()
 			defer h.sessions.Delete(sessionId)
+			defer currentSession.close(true)
 		}
 
 		// magic header instructs nginx + apache to not buffer response body
@@ -518,9 +525,7 @@ func ListenXH(ctx context.Context, address net.Address, port net.Port, streamSet
 			panic("repeated user")
 		}
 		users[nPath] = &user{
-			isLimit:   isLimit,
-			blockTime: time.Now(),
-			cancelMap: make(map[uint64]context.CancelFunc, 32),
+			isLimit: isLimit,
 		}
 	}
 
