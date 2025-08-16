@@ -40,7 +40,7 @@ func TestECHDial(t *testing.T) {
 	}
 	wg.Wait()
 	// check cache
-	echConfigCache, ok := GlobalECHConfigCache.Load("encryptedsni.com|udp://1.1.1.1")
+	echConfigCache, ok := GlobalECHConfigCache.Load(ECHCacheKey("udp://1.1.1.1", "encryptedsni.com", nil))
 	if !ok {
 		t.Error("ECH config cache not found")
 
@@ -59,22 +59,12 @@ func TestECHDial(t *testing.T) {
 func TestECHDialFail(t *testing.T) {
 	config := &Config{
 		ServerName:    "cloudflare.com",
-		EchConfigList: "udp://1.1.1.1",
+		EchConfigList: "udp://127.0.0.1",
+		EchForceQuery: "half",
 	}
-	TLSConfig := config.GetTLSConfig()
-	TLSConfig.NextProtos = []string{"http/1.1"}
-	client := &http.Client{
-		Transport: &http.Transport{
-			TLSClientConfig: TLSConfig,
-		},
-	}
-	resp, err := client.Get("https://cloudflare.com/cdn-cgi/trace")
-	common.Must(err)
-	defer resp.Body.Close()
-	_, err = io.ReadAll(resp.Body)
-	common.Must(err)
+	config.GetTLSConfig()
 	// check cache
-	echConfigCache, ok := GlobalECHConfigCache.Load("cloudflare.com|udp://1.1.1.1")
+	echConfigCache, ok := GlobalECHConfigCache.Load(ECHCacheKey("udp://127.0.0.1", "cloudflare.com", nil))
 	if !ok {
 		t.Error("ECH config cache not found")
 	}
