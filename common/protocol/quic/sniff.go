@@ -3,6 +3,7 @@ package quic
 import (
 	"crypto"
 	"crypto/aes"
+	"crypto/rand"
 	"crypto/tls"
 	"encoding/binary"
 	"io"
@@ -282,4 +283,43 @@ func hkdfExpandLabel(hash crypto.Hash, secret, context []byte, label string, len
 		panic("quic: HKDF-Expand-Label invocation failed unexpectedly")
 	}
 	return out
+}
+
+// GenerateFakeQUICPacket generates a fake QUIC packet for noise obfuscation.
+// The packet looks like a valid QUIC initial packet but contains random data
+// and will fail proper QUIC parsing, making it useful for traffic obfuscation.
+func GenerateFakeQUICPacket(size int) ([]byte, error) {
+	if size < 20 {
+		size = 20 // Minimum size for a basic QUIC-like packet
+	}
+
+	packet := make([]byte, size)
+	
+	// Fill with random data first
+	if _, err := rand.Read(packet); err != nil {
+		return nil, err
+	}
+
+	// Set initial packet type with long header (0xc0 = long header + initial packet type 0x00)
+	// Long header (0x80) + Fixed bit (0x40) + Packet Type (0x00 for initial) + Reserved bits
+	packet[0] = 0xc0 | (packet[0] & 0x0f) // Keep random lower 4 bits but set long header + initial type
+	
+	// Set QUIC version (version 1)
+	binary.BigEndian.PutUint32(packet[1:5], version1)
+	
+	// Set destination connection ID length (8 bytes is common)
+	if size > 5 {
+		packet[5] = 8
+	}
+	
+	// Ensure there's space for connection ID and basic structure
+	if size > 14 {
+		// Set source connection ID length (8 bytes)
+		packet[14] = 8
+	}
+	
+	// The rest remains random data which will make the packet fail QUIC parsing
+	// while still looking like a QUIC packet to basic inspection
+	
+	return packet, nil
 }

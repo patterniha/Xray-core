@@ -9,6 +9,7 @@ import (
 	"github.com/xtls/xray-core/common/errors"
 	v2net "github.com/xtls/xray-core/common/net"
 	"github.com/xtls/xray-core/common/protocol"
+	"github.com/xtls/xray-core/common/protocol/quic"
 	"github.com/xtls/xray-core/proxy/freedom"
 	"google.golang.org/protobuf/proto"
 	"github.com/xtls/xray-core/transport/internet"
@@ -200,8 +201,30 @@ func ParseNoise(noise *Noise) (*freedom.Noise, error) {
 			return nil, errors.New("Invalid base64 string").Base(err)
 		}
 
+	case "fake_quic":
+		// generate fake QUIC packet
+		var size int = 100 // default size
+		if noise.Packet != "" {
+			min, max, err := ParseRangeString(noise.Packet)
+			if err != nil {
+				return nil, errors.New("invalid value for fake_quic size").Base(err)
+			}
+			size = int(min)
+			if max > min {
+				// Use max as size if range is provided (could extend to random between min-max later)
+				size = int(max)
+			}
+		}
+		if size < 20 {
+			size = 20
+		}
+		NConfig.Packet, err = quic.GenerateFakeQUICPacket(size)
+		if err != nil {
+			return nil, errors.New("Failed to generate fake QUIC packet").Base(err)
+		}
+
 	default:
-		return nil, errors.New("Invalid packet, only rand/str/hex/base64 are supported")
+		return nil, errors.New("Invalid packet, only rand/str/hex/base64/fake_quic are supported")
 	}
 
 	if noise.Delay != nil {

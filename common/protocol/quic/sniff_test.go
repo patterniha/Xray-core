@@ -1,6 +1,7 @@
 package quic_test
 
 import (
+	"encoding/binary"
 	"encoding/hex"
 	"errors"
 	"testing"
@@ -283,5 +284,52 @@ func TestSniffFakeQUICPacketWithTooShortData(t *testing.T) {
 	_, err = quic.SniffQUIC(pkt)
 	if err == nil {
 		t.Error("failed")
+	}
+}
+
+func TestGenerateFakeQUICPacket(t *testing.T) {
+	// Test basic fake QUIC packet generation
+	packet, err := quic.GenerateFakeQUICPacket(100)
+	if err != nil {
+		t.Errorf("Failed to generate fake QUIC packet: %v", err)
+	}
+	if len(packet) != 100 {
+		t.Errorf("Expected packet length 100, got %d", len(packet))
+	}
+
+	// Verify it looks like a QUIC packet (has long header bit and fixed bit)
+	if packet[0]&0x80 == 0 {
+		t.Error("Generated packet doesn't have long header bit set")
+	}
+	if packet[0]&0x40 == 0 {
+		t.Error("Generated packet doesn't have fixed bit set")
+	}
+	
+	// Verify packet type is initial (0x00)
+	packetType := (packet[0] & 0x30) >> 4
+	if packetType != 0 {
+		t.Errorf("Generated packet is not an initial packet type, got type %d", packetType)
+	}
+
+	// Verify it has QUIC version 1
+	if binary.BigEndian.Uint32(packet[1:5]) != 1 {
+		t.Error("Generated packet doesn't have correct QUIC version")
+	}
+
+	// Verify the packet will be rejected by real QUIC parsing (it should be fake)
+	_, err = quic.SniffQUIC(packet)
+	if err == nil {
+		t.Error("Fake QUIC packet was not rejected by real QUIC parser")
+	}
+}
+
+func TestGenerateFakeQUICPacketMinSize(t *testing.T) {
+	// Test minimum size handling
+	packet, err := quic.GenerateFakeQUICPacket(5) // Request smaller than minimum
+	if err != nil {
+		t.Errorf("Failed to generate fake QUIC packet: %v", err)
+	}
+	if len(packet) < 20 {
+		t.Errorf("Expected minimum packet length 20, got %d", len(packet))
 	}
 }
