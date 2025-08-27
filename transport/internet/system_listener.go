@@ -90,7 +90,7 @@ func (dl *DefaultListener) Listen(ctx context.Context, addr net.Addr, sockopt *S
 		address = addr.String()
 		lc.Control = getControlFunc(ctx, sockopt, dl.controllers)
 		// default disable keepalive
-		lc.KeepAlive = -1
+		// lc.KeepAlive = -1
 		if sockopt != nil {
 			if sockopt.TcpKeepAliveIdle*sockopt.TcpKeepAliveInterval < 0 {
 				return nil, errors.New("invalid TcpKeepAliveIdle or TcpKeepAliveInterval value: ", sockopt.TcpKeepAliveIdle, " ", sockopt.TcpKeepAliveInterval)
