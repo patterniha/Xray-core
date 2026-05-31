@@ -31,7 +31,7 @@ import (
 // thus most of the DOH implementation is copied from udpns.go
 type DoHNameServer struct {
 	cacheController *CacheController
-	httpClient      *http.Client
+	dialTLS         func(ctx context.Context, network, addr string, cfg *tls.Config) (net.Conn, error)
 	dohURL          string
 	clientIP        net.IP
 }
@@ -49,64 +49,58 @@ func NewDoHNameServer(url *url.URL, dispatcher routing.Dispatcher, h2c bool, dis
 		dohURL:          url.String(),
 		clientIP:        clientIP,
 	}
-	s.httpClient = &http.Client{
-		Transport: &http2.Transport{
-			IdleConnTimeout: net.ConnIdleTimeout,
-			ReadIdleTimeout: net.ChromeH2KeepAlivePeriod,
-			DialTLSContext: func(ctx context.Context, network, addr string, cfg *tls.Config) (net.Conn, error) {
-				dest, err := net.ParseDestination(network + ":" + addr)
-				if err != nil {
-					return nil, err
-				}
-				var conn net.Conn
-				if dispatcher != nil {
-					dnsCtx := toDnsContext(ctx, s.dohURL)
-					if h2c {
-						dnsCtx = session.ContextWithMitmAlpn11(dnsCtx, false) // for insurance
-						dnsCtx = session.ContextWithMitmServerName(dnsCtx, url.Hostname())
-					}
-					link, err := dispatcher.Dispatch(dnsCtx, dest)
-					select {
-					case <-ctx.Done():
-						return nil, ctx.Err()
-					default:
-					}
-					if err != nil {
-						return nil, err
-					}
-					cc := common.ChainedClosable{}
-					if cw, ok := link.Writer.(common.Closable); ok {
-						cc = append(cc, cw)
-					}
-					if cr, ok := link.Reader.(common.Closable); ok {
-						cc = append(cc, cr)
-					}
-					conn = cnc.NewConnection(
-						cnc.ConnectionInputMulti(link.Writer),
-						cnc.ConnectionOutputMulti(link.Reader),
-						cnc.ConnectionOnClose(cc),
-					)
-				} else {
-					log.Record(&log.AccessMessage{
-						From:   "DNS",
-						To:     s.dohURL,
-						Status: log.AccessAccepted,
-						Detour: "local",
-					})
-					conn, err = internet.DialSystem(ctx, dest, nil)
-					if err != nil {
-						return nil, err
-					}
-				}
-				if !h2c {
-					conn = utls.UClient(conn, &utls.Config{ServerName: url.Hostname()}, utls.HelloChrome_Auto)
-					if err := conn.(*utls.UConn).HandshakeContext(ctx); err != nil {
-						return nil, err
-					}
-				}
-				return conn, nil
-			},
-		},
+	s.dialTLS = func(ctx context.Context, network, addr string, cfg *tls.Config) (net.Conn, error) {
+		dest, err := net.ParseDestination(network + ":" + addr)
+		if err != nil {
+			return nil, err
+		}
+		var conn net.Conn
+		if dispatcher != nil {
+			dnsCtx := toDnsContext(ctx, s.dohURL)
+			if h2c {
+				dnsCtx = session.ContextWithMitmAlpn11(dnsCtx, false) // for insurance
+				dnsCtx = session.ContextWithMitmServerName(dnsCtx, url.Hostname())
+			}
+			link, err := dispatcher.Dispatch(dnsCtx, dest)
+			select {
+			case <-ctx.Done():
+				return nil, ctx.Err()
+			default:
+			}
+			if err != nil {
+				return nil, err
+			}
+			cc := common.ChainedClosable{}
+			if cw, ok := link.Writer.(common.Closable); ok {
+				cc = append(cc, cw)
+			}
+			if cr, ok := link.Reader.(common.Closable); ok {
+				cc = append(cc, cr)
+			}
+			conn = cnc.NewConnection(
+				cnc.ConnectionInputMulti(link.Writer),
+				cnc.ConnectionOutputMulti(link.Reader),
+				cnc.ConnectionOnClose(cc),
+			)
+		} else {
+			log.Record(&log.AccessMessage{
+				From:   "DNS",
+				To:     s.dohURL,
+				Status: log.AccessAccepted,
+				Detour: "local",
+			})
+			conn, err = internet.DialSystem(ctx, dest, nil)
+			if err != nil {
+				return nil, err
+			}
+		}
+		if !h2c {
+			conn = utls.UClient(conn, &utls.Config{ServerName: url.Hostname()}, utls.HelloChrome_Auto)
+			if err := conn.(*utls.UConn).HandshakeContext(ctx); err != nil {
+				return nil, err
+			}
+		}
+		return conn, nil
 	}
 	return s
 }
@@ -235,14 +229,24 @@ func (s *DoHNameServer) dohHTTPSContext(ctx context.Context, b []byte) ([]byte, 
 	utils.TryDefaultHeadersWith(req.Header, "fetch")
 	req.Header.Set("X-Padding", utils.H2Base62Pad(crypto.RandBetween(100, 1000)))
 
-	hc := s.httpClient
+	// Create a fresh transport and client per query to force a new TCP+TLS connection each time
+	transport := &http2.Transport{
+		IdleConnTimeout: net.ConnIdleTimeout,
+		ReadIdleTimeout: net.ChromeH2KeepAlivePeriod,
+		DialTLSContext:  s.dialTLS,
+	}
+	hc := &http.Client{Transport: transport}
 
 	resp, err := hc.Do(req.WithContext(ctx))
 	if err != nil {
+		transport.CloseIdleConnections()
 		return nil, err
 	}
+	defer func() {
+		resp.Body.Close()
+		transport.CloseIdleConnections() // ensure the connection is torn down after use
+	}()
 
-	defer resp.Body.Close()
 	if resp.StatusCode != http.StatusOK {
 		io.Copy(io.Discard, resp.Body) // flush resp.Body so that the conn is reusable
 		return nil, fmt.Errorf("DOH server returned code %d", resp.StatusCode)
