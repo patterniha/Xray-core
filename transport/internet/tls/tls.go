@@ -147,6 +147,11 @@ func GeneraticUClient(c net.Conn, config *tls.Config) *utls.UConn {
 }
 
 func copyConfig(c *tls.Config) *utls.Config {
+	curvePreferences := make([]utls.CurveID, 0, len(c.CurvePreferences))
+	for _, curve := range c.CurvePreferences {
+		curvePreferences = append(curvePreferences, utls.CurveID(curve))
+	}
+
 	config := &utls.Config{
 		Rand:                           c.Rand,
 		RootCAs:                        c.RootCAs,
@@ -159,7 +164,7 @@ func copyConfig(c *tls.Config) *utls.Config {
 		CipherSuites:                   c.CipherSuites,
 		MinVersion:                     c.MinVersion,
 		MaxVersion:                     c.MaxVersion,
-		CurvePreferences:               c.CurvePreferences,
+		CurvePreferences:               curvePreferences,
 	}
 	return config
 }
