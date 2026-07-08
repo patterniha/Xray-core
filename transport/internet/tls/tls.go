@@ -156,6 +156,10 @@ func copyConfig(c *tls.Config) *utls.Config {
 		KeyLogWriter:                   c.KeyLogWriter,
 		EncryptedClientHelloConfigList: c.EncryptedClientHelloConfigList,
 		NextProtos:                     c.NextProtos,
+		CipherSuites:                   c.CipherSuites,
+		MinVersion:                     c.MinVersion,
+		MaxVersion:                     c.MaxVersion,
+		CurvePreferences:               c.CurvePreferences,
 	}
 	return config
 }
