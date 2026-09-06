@@ -157,6 +157,21 @@ func TestSocketConfig(t *testing.T) {
 	if expectedOutput.ParseTFOValue() != -1 {
 		t.Fatalf("unexpected parsed TFO value, which should be -1")
 	}
+
+	// test "dialMode": "custom", the value is passed through as-is
+	expectedOutput = &internet.SocketConfig{
+		DialMode:      "custom",
+		HappyEyeballs: &internet.HappyEyeballsConfig{Interleave: 1, TryDelayMs: 0, PrioritizeIpv6: false, MaxConcurrentTry: 4},
+	}
+	runMultiTestCase(t, []TestCase{
+		{
+			Input: `{
+				"dialMode": "custom"
+			}`,
+			Parser: createParser(),
+			Output: expectedOutput,
+		},
+	})
 }
 
 func TestHeaderCustomUDPBuild(t *testing.T) {

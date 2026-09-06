@@ -161,6 +161,10 @@ message SocketConfig {
   HappyEyeballsConfig happy_eyeballs = 22;
 
   repeated string trusted_x_forwarded_for = 23;
+
+  // DialMode selects which code DefaultSystemDialer.Dial runs, e.g. "code-1".
+  // Empty selects the default code.
+  string dial_mode = 24;
 }
 
 message HappyEyeballsConfig {

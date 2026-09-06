@@ -47,7 +47,23 @@ func resolveSrcAddr(network net.Network, src net.Address) net.Addr {
 }
 
 func (d *DefaultSystemDialer) Dial(ctx context.Context, src net.Address, dest net.Destination, sockopt *SocketConfig) (net.Conn, error) {
-	errors.LogDebug(ctx, "dialing to "+dest.String())
+	var dialMode string // "dialMode" from sockopt in the config, "" when not set
+	if sockopt != nil {
+		dialMode = sockopt.DialMode
+	}
+	msg := "dialing to " + dest.String()
+	if dialMode != "" {
+		msg += " with dialMode " + dialMode
+	}
+	errors.LogDebug(ctx, msg)
+
+	// Add a case per dialMode value to run different dialing code.
+	// An empty dialMode runs the default code below.
+	switch dialMode {
+	case "":
+	default:
+		return nil, errors.New("unsupported dialMode: ", dialMode)
+	}
 
 	if dest.Network == net.Network_UDP {
 		destAddr, err := net.ResolveUDPAddr("udp", dest.NetAddr())

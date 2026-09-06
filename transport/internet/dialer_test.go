@@ -24,3 +24,23 @@ func TestDialWithLocalAddr(t *testing.T) {
 	}
 	conn.Close()
 }
+
+func TestDialWithDialMode(t *testing.T) {
+	server := &tcp.Server{}
+	dest, err := server.Start()
+	common.Must(err)
+	defer server.Close()
+
+	// an empty dialMode runs the default dialing code
+	conn, err := DialSystem(context.Background(), net.TCPDestination(net.LocalHostIP, dest.Port), &SocketConfig{DialMode: ""})
+	common.Must(err)
+	if r := cmp.Diff(conn.RemoteAddr().String(), "127.0.0.1:"+dest.Port.String()); r != "" {
+		t.Error(r)
+	}
+	conn.Close()
+
+	// a dialMode that has no code behind it yet is rejected
+	if _, err := DialSystem(context.Background(), net.TCPDestination(net.LocalHostIP, dest.Port), &SocketConfig{DialMode: "unknown"}); err == nil {
+		t.Fatal("expected an error for a dialMode without code")
+	}
+}
