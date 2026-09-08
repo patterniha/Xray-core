@@ -1,6 +1,6 @@
 module github.com/xtls/xray-core
 
-go 1.26
+go 1.27
 
 require (
 	github.com/apernet/quic-go v0.61.1-0.20260806010916-184d081eef3e
@@ -22,7 +22,7 @@ require (
 	github.com/sagernet/sing-shadowsocks v0.2.7
 	github.com/stretchr/testify v1.12.1
 	github.com/vishvananda/netlink v1.3.1
-	github.com/xtls/reality v0.0.0-20260322125925-9234c772ba8f
+	github.com/xtls/reality v0.0.0-20260908062103-8cdf7bf9c7f0
 	go4.org/netipx v0.0.0-20231129151722-fdeea329fbba
 	golang.org/x/crypto v0.55.0
 	golang.org/x/exp v0.0.0-20240506185415-9bf2ced13842
