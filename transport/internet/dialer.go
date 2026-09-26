@@ -84,6 +84,21 @@ var (
 	obm       outbound.Manager
 )
 
+type outboundManagerKey struct{}
+
+// ContextWithOutboundManager returns a context in which DialSystem looks a dialerProxy up in om, the
+// outbound manager of the instance that the dial belongs to. Several instances can run in one process,
+// and each has outbounds of its own.
+func ContextWithOutboundManager(ctx context.Context, om outbound.Manager) context.Context {
+	return context.WithValue(ctx, outboundManagerKey{}, om)
+}
+
+// OutboundManagerFromContext returns the outbound manager set by ContextWithOutboundManager, or nil.
+func OutboundManagerFromContext(ctx context.Context) outbound.Manager {
+	om, _ := ctx.Value(outboundManagerKey{}).(outbound.Manager)
+	return om
+}
+
 func LookupForIP(domain string, strategy DomainStrategy, localAddr net.Address) ([]net.IP, error) {
 	if dnsClient == nil {
 		return nil, errors.New("DNS client not initialized")
@@ -268,10 +283,14 @@ func DialSystem(ctx context.Context, dest net.Destination, sockopt *SocketConfig
 	}
 
 	if len(sockopt.DialerProxy) > 0 {
-		if obm == nil {
+		om := OutboundManagerFromContext(ctx)
+		if om == nil {
+			om = obm
+		}
+		if om == nil {
 			return nil, errors.New("there is no outbound manager for dialerProxy")
 		}
-		h := obm.GetHandler(sockopt.DialerProxy)
+		h := om.GetHandler(sockopt.DialerProxy)
 		if h == nil {
 			return nil, errors.New("there is no outbound handler for dialerProxy")
 		}
@@ -281,6 +300,9 @@ func DialSystem(ctx context.Context, dest net.Destination, sockopt *SocketConfig
 	return effectiveSystemDialer.Dial(ctx, src, dest, sockopt)
 }
 
+// InitSystemDialer sets the DNS client of the system dialer, and the outbound manager in which it looks
+// the dialerProxy up for a dial whose context carries none (see ContextWithOutboundManager). Every new
+// instance sets them.
 func InitSystemDialer(dc dns.Client, om outbound.Manager) {
 	dnsClient = dc
 	obm = om

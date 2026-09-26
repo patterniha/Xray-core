@@ -84,7 +84,7 @@ func newServiceClient(streamSettings *internet.MemoryStreamConfig, timeout time.
 
 		gotlsConfig := &gotls.Config{ServerName: host.Address.String()}
 		if tlsConfig != nil {
-			gotlsConfig = tlsConfig.GetTLSConfig(tls.WithDestination(host))
+			gotlsConfig = tlsConfig.GetTLSConfigWithContext(ctx, tls.WithDestination(host))
 		}
 		if len(gotlsConfig.NextProtos) != 1 {
 			if overHTTP2 {

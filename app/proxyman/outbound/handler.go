@@ -65,6 +65,7 @@ type Handler struct {
 	udp443          string
 	uplinkCounter   stats.Counter
 	downlinkCounter stats.Counter
+	outboundManager outbound.Manager
 }
 
 // NewHandler creates a new Handler based on the given configuration.
@@ -76,6 +77,7 @@ func NewHandler(ctx context.Context, config *core.OutboundHandlerConfig) (outbou
 		uplinkCounter:   uplinkCounter,
 		downlinkCounter: downlinkCounter,
 	}
+	h.outboundManager, _ = v.GetFeature(outbound.ManagerType()).(outbound.Manager)
 
 	if config.SenderSettings != nil {
 		senderSettings, err := config.SenderSettings.GetInstance()
@@ -176,6 +178,7 @@ func (h *Handler) Tag() string {
 
 // Dispatch implements proxy.Outbound.Dispatch.
 func (h *Handler) Dispatch(ctx context.Context, link *transport.Link) {
+	ctx = h.withOutboundManager(ctx)
 	outbounds := session.OutboundsFromContext(ctx)
 	ob := outbounds[len(outbounds)-1]
 	content := session.ContentFromContext(ctx)
@@ -264,8 +267,19 @@ func (h *Handler) DestIpAddress() net.IP {
 	return internet.DestIpAddress()
 }
 
+// withOutboundManager makes the dialerProxy of the dials in ctx resolve in the outbounds of this
+// handler's instance, even when other instances run in the same process. Dial sets it as well as
+// Dispatch, since a mux connection is dialed in a context of its own.
+func (h *Handler) withOutboundManager(ctx context.Context) context.Context {
+	if h.outboundManager == nil || internet.OutboundManagerFromContext(ctx) == h.outboundManager {
+		return ctx
+	}
+	return internet.ContextWithOutboundManager(ctx, h.outboundManager)
+}
+
 // Dial implements internet.Dialer.
 func (h *Handler) Dial(ctx context.Context, dest net.Destination) (stat.Connection, error) {
+	ctx = h.withOutboundManager(ctx)
 	if h.senderSettings != nil && h.senderSettings.Via != nil {
 		outbounds := session.OutboundsFromContext(ctx)
 		ob := outbounds[len(outbounds)-1]

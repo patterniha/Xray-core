@@ -363,8 +363,15 @@ func (r *RandCarrier) Read(p []byte) (n int, err error) {
 	return rand.Read(p)
 }
 
-// GetTLSConfig converts this Config into tls.Config.
+// GetTLSConfig converts this Config into tls.Config. A dial should use GetTLSConfigWithContext instead,
+// so that the ECH config query finds the dialerProxy of echSockopt among the outbounds of its instance.
 func (c *Config) GetTLSConfig(opts ...Option) *tls.Config {
+	return c.GetTLSConfigWithContext(context.Background(), opts...)
+}
+
+// GetTLSConfigWithContext is GetTLSConfig for a dial made in ctx, whose outbound manager the ECH config
+// query uses to find the dialerProxy of echSockopt.
+func (c *Config) GetTLSConfigWithContext(ctx context.Context, opts ...Option) *tls.Config {
 	root, err := c.getCertPool()
 	if err != nil {
 		errors.LogErrorInner(context.Background(), err, "failed to load system root certificate")
@@ -473,7 +480,7 @@ func (c *Config) GetTLSConfig(opts ...Option) *tls.Config {
 		}
 	}
 	if len(c.EchConfigList) > 0 || len(c.EchServerKeys) > 0 {
-		err := ApplyECH(c, config)
+		err := ApplyECH(ctx, c, config)
 		if err != nil {
 			errors.LogError(context.Background(), err)
 		}

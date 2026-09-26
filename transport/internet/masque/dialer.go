@@ -44,7 +44,7 @@ func Dial(ctx context.Context, dest net.Destination, streamSettings *internet.Me
 	}
 	dest.Network = net.Network_UDP
 
-	gotlsConfig := tlsConfig.GetTLSConfig(tls.WithDestination(dest))
+	gotlsConfig := tlsConfig.GetTLSConfigWithContext(ctx, tls.WithDestination(dest))
 	gotlsConfig.NextProtos = []string{http3.NextProtoH3}
 
 	quicParams := streamSettings.QuicParams
@@ -136,7 +136,7 @@ func usesHTTP2(config *tls.Config) bool {
 
 func dialHTTP2(ctx context.Context, dest net.Destination, streamSettings *internet.MemoryStreamConfig, tlsConfig *tls.Config, config *Config) (stat.Connection, error) {
 	dest.Network = net.Network_TCP
-	gotlsConfig := tlsConfig.GetTLSConfig(tls.WithDestination(dest))
+	gotlsConfig := tlsConfig.GetTLSConfigWithContext(ctx, tls.WithDestination(dest))
 
 	var conn net.Conn
 	var err error

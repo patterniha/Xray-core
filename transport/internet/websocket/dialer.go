@@ -70,7 +70,7 @@ func dialWebSocket(ctx context.Context, dest net.Destination, streamSettings *in
 	tConfig := tls.ConfigFromStreamSettings(streamSettings)
 	if tConfig != nil {
 		protocol = "wss"
-		tlsConfig := tConfig.GetTLSConfig(tls.WithDestination(dest), tls.WithNextProto("http/1.1"))
+		tlsConfig := tConfig.GetTLSConfigWithContext(ctx, tls.WithDestination(dest), tls.WithNextProto("http/1.1"))
 		dialer.TLSClientConfig = tlsConfig
 		if fingerprint := tls.GetFingerprint(tConfig.Fingerprint); fingerprint != nil {
 			dialer.NetDialTLSContext = func(_ context.Context, _, addr string) (net.Conn, error) {

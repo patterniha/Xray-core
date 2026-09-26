@@ -27,7 +27,7 @@ import (
 	"golang.org/x/crypto/cryptobyte"
 )
 
-func ApplyECH(c *Config, config *tls.Config) error {
+func ApplyECH(ctx context.Context, c *Config, config *tls.Config) error {
 	var ECHConfig []byte
 	var err error
 
@@ -69,7 +69,7 @@ func ApplyECH(c *Config, config *tls.Config) error {
 			if nameToQuery == "" {
 				return errors.New("Using DNS for ECH Config needs serverName or use Server format example.com+https://1.1.1.1/dns-query")
 			}
-			ECHConfig, err = QueryRecord(nameToQuery, DNSServer, c.EchSocketSettings)
+			ECHConfig, err = QueryRecord(ctx, nameToQuery, DNSServer, c.EchSocketSettings)
 			if err != nil {
 				return errors.New("Failed to query ECH DNS record for domain: ", nameToQuery, " at server: ", DNSServer).Base(err)
 			}
@@ -111,7 +111,7 @@ func ECHCacheKey(server, domain string, sockopt *internet.SocketConfig) string {
 // Update updates the ECH config for given domain and server.
 // this method is concurrent safe, only one update request will be sent, others get the cache.
 // if isLockedUpdate is true, it will not try to acquire the lock.
-func (c *ECHConfigCache) Update(domain string, server string, isLockedUpdate bool, sockopt *internet.SocketConfig) ([]byte, error) {
+func (c *ECHConfigCache) Update(ctx context.Context, domain string, server string, isLockedUpdate bool, sockopt *internet.SocketConfig) ([]byte, error) {
 	if !isLockedUpdate {
 		c.UpdateLock.Lock()
 		defer c.UpdateLock.Unlock()
@@ -124,7 +124,7 @@ func (c *ECHConfigCache) Update(domain string, server string, isLockedUpdate boo
 	}
 	// Query ECH config from DNS server
 	errors.LogDebug(context.Background(), "Trying to query ECH config for domain: ", domain, " with ECH server: ", server)
-	echConfig, ttl, err := dnsQuery(server, domain, sockopt)
+	echConfig, ttl, err := dnsQuery(ctx, server, domain, sockopt)
 	if err != nil {
 		return nil, err
 	}
@@ -138,7 +138,13 @@ func (c *ECHConfigCache) Update(domain string, server string, isLockedUpdate boo
 
 // QueryRecord returns the ECH config for given domain.
 // If the record is not in cache or expired, it will query the DNS server and update the cache.
-func QueryRecord(domain string, server string, sockopt *internet.SocketConfig) ([]byte, error) {
+// The query can outlive the dial that asks for it, so of ctx it keeps only the outbound manager, which
+// the dialerProxy of sockopt resolves in.
+func QueryRecord(ctx context.Context, domain string, server string, sockopt *internet.SocketConfig) ([]byte, error) {
+	queryCtx := context.Background()
+	if om := internet.OutboundManagerFromContext(ctx); om != nil {
+		queryCtx = internet.ContextWithOutboundManager(queryCtx, om)
+	}
 	GlobalECHConfigCacheKey := ECHCacheKey(server, domain, sockopt)
 	echConfigCache, ok := GlobalECHConfigCache.Load(GlobalECHConfigCacheKey)
 	if !ok {
@@ -156,13 +162,13 @@ func QueryRecord(domain string, server string, sockopt *internet.SocketConfig) (
 	// otherwise return old value immediately and update in a goroutine
 	// but if the cache is too old, wait for update
 	if configRecord.expire.IsZero() || configRecord.expire.Add(time.Hour*4).Before(time.Now()) {
-		return echConfigCache.Update(domain, server, false, sockopt)
+		return echConfigCache.Update(queryCtx, domain, server, false, sockopt)
 	} else {
 		// If someone already acquired the lock, it means it is updating, do not start another update goroutine
 		if echConfigCache.UpdateLock.TryLock() {
 			go func() {
 				defer echConfigCache.UpdateLock.Unlock()
-				echConfigCache.Update(domain, server, true, sockopt)
+				echConfigCache.Update(queryCtx, domain, server, true, sockopt)
 			}()
 		}
 		return configRecord.config, nil
@@ -171,7 +177,7 @@ func QueryRecord(domain string, server string, sockopt *internet.SocketConfig) (
 
 // dnsQuery is the real func for sending type65 query for given domain to given DNS server.
 // return ECH config, TTL and error
-func dnsQuery(server string, domain string, sockopt *internet.SocketConfig) ([]byte, uint32, error) {
+func dnsQuery(ctx context.Context, server string, domain string, sockopt *internet.SocketConfig) ([]byte, uint32, error) {
 	m := new(dns.Msg)
 	var dnsResolve []byte
 	m.SetQuestion(dns.Fqdn(domain), dns.TypeHTTPS)
@@ -228,7 +234,7 @@ func dnsQuery(server string, domain string, sockopt *internet.SocketConfig) ([]b
 			}
 			client, _ = clientForECHDOH.LoadOrStore(serverKey, c)
 		}
-		req, err := http.NewRequest("POST", server, bytes.NewReader(msg))
+		req, err := http.NewRequestWithContext(ctx, "POST", server, bytes.NewReader(msg))
 		if err != nil {
 			return nil, 0, err
 		}
@@ -266,7 +272,7 @@ func dnsQuery(server string, domain string, sockopt *internet.SocketConfig) ([]b
 		if err != nil {
 			return nil, 0, errors.New("failed to parse udp dns server ", udpServerURL.Host, " for ECH: ", err)
 		}
-		dnsTimeoutCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		dnsTimeoutCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
 		defer cancel()
 		// use xray's internet.DialSystem as mentioned above
 		conn, err := internet.DialSystem(dnsTimeoutCtx, dest, sockopt)

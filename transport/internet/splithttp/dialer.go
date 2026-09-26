@@ -71,7 +71,7 @@ func getHTTPClient(ctx context.Context, dest net.Destination, streamSettings *in
 		}
 
 		xmuxManager = NewXmuxManager(xmuxConfig, func() XmuxConn {
-			return createHTTPClient(dest, streamSettings)
+			return createHTTPClient(ctx, dest, streamSettings)
 		})
 		globalDialerMap[key] = xmuxManager
 	}
@@ -99,7 +99,7 @@ func decideHTTPVersion(tlsConfig *tls.Config, realityConfig *reality.Config) str
 	return "2"
 }
 
-func createHTTPClient(dest net.Destination, streamSettings *internet.MemoryStreamConfig) DialerClient {
+func createHTTPClient(ctx context.Context, dest net.Destination, streamSettings *internet.MemoryStreamConfig) DialerClient {
 	tlsConfig := tls.ConfigFromStreamSettings(streamSettings)
 	realityConfig := reality.ConfigFromStreamSettings(streamSettings)
 
@@ -111,7 +111,7 @@ func createHTTPClient(dest net.Destination, streamSettings *internet.MemoryStrea
 	var gotlsConfig *gotls.Config
 
 	if tlsConfig != nil {
-		gotlsConfig = tlsConfig.GetTLSConfig(tls.WithDestination(dest))
+		gotlsConfig = tlsConfig.GetTLSConfigWithContext(ctx, tls.WithDestination(dest))
 	}
 
 	transportConfig := streamSettings.ProtocolSettings.(*Config)
