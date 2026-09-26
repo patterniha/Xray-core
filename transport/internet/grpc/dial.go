@@ -122,6 +122,8 @@ func getGrpcClient(ctx context.Context, dest net.Destination, streamSettings *in
 			gctx = c.ContextWithID(gctx, c.IDFromContext(ctx))
 			gctx = session.ContextWithOutbounds(gctx, session.OutboundsFromContext(ctx))
 			gctx = session.ContextWithTimeoutOnly(gctx, true)
+			gctx = internet.ContextWithOutboundManager(gctx, internet.OutboundManagerFromContext(ctx))
+			gctx = internet.ContextWithDNSClient(gctx, internet.DNSClientFromContext(ctx))
 
 			var c net.Conn
 			if streamSettings.FinalMask != nil {
