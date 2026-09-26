@@ -141,13 +141,7 @@ func (c *ECHConfigCache) Update(ctx context.Context, domain string, server strin
 // The query can outlive the dial that asks for it, so of ctx it keeps only the outbound manager and the
 // DNS client, for the dialerProxy and the domainStrategy of sockopt.
 func QueryRecord(ctx context.Context, domain string, server string, sockopt *internet.SocketConfig) ([]byte, error) {
-	queryCtx := context.Background()
-	if om := internet.OutboundManagerFromContext(ctx); om != nil {
-		queryCtx = internet.ContextWithOutboundManager(queryCtx, om)
-	}
-	if dc := internet.DNSClientFromContext(ctx); dc != nil {
-		queryCtx = internet.ContextWithDNSClient(queryCtx, dc)
-	}
+	queryCtx := internet.DetachedContext(ctx)
 	GlobalECHConfigCacheKey := ECHCacheKey(server, domain, sockopt)
 	echConfigCache, ok := GlobalECHConfigCache.Load(GlobalECHConfigCacheKey)
 	if !ok {

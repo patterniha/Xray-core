@@ -101,7 +101,7 @@ func Dial(ctx context.Context, dest net.Destination, streamSettings *internet.Me
 
 	errors.LogInfo(ctx, "opened session ", session)
 
-	return newConn(context.Background(), storage,
+	return newConn(internet.DetachedContext(ctx), storage,
 		uplinkPrefix(session), downlinkPrefix(session), paramsFromConfig(config), func() {
 			storage.Close()
 		}), nil

@@ -113,6 +113,20 @@ func DNSClientFromContext(ctx context.Context) dns.Client {
 	return dc
 }
 
+// DetachedContext returns a background context that keeps, of ctx, only the outbound manager and the DNS
+// client of the instance, for dials made after the one of ctx is over: those of a connection that
+// outlives its dial, or of a background refresh.
+func DetachedContext(ctx context.Context) context.Context {
+	detached := context.Background()
+	if om := OutboundManagerFromContext(ctx); om != nil {
+		detached = ContextWithOutboundManager(detached, om)
+	}
+	if dc := DNSClientFromContext(ctx); dc != nil {
+		detached = ContextWithDNSClient(detached, dc)
+	}
+	return detached
+}
+
 // LookupForIP resolves domain with the DNS client of ctx, or else with the one set by InitSystemDialer.
 func LookupForIP(ctx context.Context, domain string, strategy DomainStrategy, localAddr net.Address) ([]net.IP, error) {
 	dc := DNSClientFromContext(ctx)
