@@ -22,6 +22,7 @@ import (
 	"github.com/miekg/dns"
 	"github.com/xtls/xray-core/common/errors"
 	"github.com/xtls/xray-core/common/net"
+	"github.com/xtls/xray-core/common/session"
 	"github.com/xtls/xray-core/common/utils"
 	"github.com/xtls/xray-core/transport/internet"
 	"golang.org/x/crypto/cryptobyte"
@@ -202,6 +203,16 @@ func dnsQuery(server string, domain string, sockopt *internet.SocketConfig) ([]b
 					if err != nil {
 						return nil, err
 					}
+					u, err := url.Parse(server)
+					if err != nil {
+						return nil, err
+					}
+					if h2c {
+						// same as DoH h2c: "fromMitm" in the tlsSettings of the outbound that handles TLS
+						// takes the DoH server's name, and h2 for alpn
+						ctx = session.ContextWithMitmAlpn11(ctx, false) // for insurance
+						ctx = session.ContextWithMitmServerName(ctx, u.Hostname())
+					}
 					var conn net.Conn
 
 					conn, err = internet.DialSystem(ctx, dest, sockopt)
@@ -210,10 +221,6 @@ func dnsQuery(server string, domain string, sockopt *internet.SocketConfig) ([]b
 					}
 
 					if !h2c {
-						u, err := url.Parse(server)
-						if err != nil {
-							return nil, err
-						}
 						conn = utls.UClient(conn, &utls.Config{ServerName: u.Hostname()}, utls.HelloChrome_Auto)
 						if err := conn.(*utls.UConn).HandshakeContext(ctx); err != nil {
 							return nil, err
