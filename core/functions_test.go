@@ -11,8 +11,10 @@ import (
 	"github.com/google/go-cmp/cmp"
 	"github.com/miekg/dns"
 	"github.com/xtls/xray-core/app/dispatcher"
+	appdns "github.com/xtls/xray-core/app/dns"
 	"github.com/xtls/xray-core/app/proxyman"
 	"github.com/xtls/xray-core/common"
+	"github.com/xtls/xray-core/common/geodata"
 	"github.com/xtls/xray-core/common/net"
 	"github.com/xtls/xray-core/common/protocol"
 	"github.com/xtls/xray-core/common/serial"
@@ -281,6 +283,93 @@ func TestXrayECHQueryThroughOwnInstance(t *testing.T) {
 	if queriesA.Load() == 0 || queriesB.Load() != 0 {
 		t.Error("the ECH config query of instance A reached its own DNS server ", queriesA.Load(),
 			" times and the one of instance B ", queriesB.Load(), " times")
+	}
+}
+
+func TestXrayDNSOfEachInstance(t *testing.T) {
+	// Two instances in one process, whose DNS resolves one domain to different addresses. A domain strategy
+	// of the instance created first has to resolve with its own DNS, not with the one of the instance
+	// created last, and so does the final rule of its freedom, which blocks the address of the other one.
+	// Nothing listens on that address or connects to it: macOS has no 127.0.0.2 by default.
+	server := tcp.Server{MsgProcessor: xor}
+	dest, err := server.Start()
+	common.Must(err)
+	defer server.Close()
+	target := net.TCPDestination(net.DomainAddress("target.example"), dest.Port)
+	otherIP := net.ParseAddress("127.0.0.2")
+
+	for _, strategy := range []struct {
+		name   string
+		sender *proxyman.SenderConfig
+	}{
+		{"sockopt domainStrategy", &proxyman.SenderConfig{
+			StreamSettings: &internet.StreamConfig{
+				SocketSettings: &internet.SocketConfig{DomainStrategy: internet.DomainStrategy_USE_IP4},
+			},
+		}},
+		{"targetStrategy", &proxyman.SenderConfig{TargetStrategy: internet.DomainStrategy_USE_IP4}},
+	} {
+		// start runs an instance whose DNS resolves target to hostIP, and whose freedom blocks blockedIP
+		start := func(hostIP, blockedIP net.Address) *core.Instance {
+			config := &core.Config{
+				App: []*serial.TypedMessage{
+					serial.ToTypedMessage(&appdns.Config{
+						StaticHosts: []*appdns.Config_HostMapping{{
+							Domain: &geodata.DomainRule{Value: &geodata.DomainRule_Custom{
+								Custom: &geodata.Domain{Type: geodata.Domain_Full, Value: target.Address.Domain()},
+							}},
+							Ip: [][]byte{hostIP.IP()},
+						}},
+					}),
+					serial.ToTypedMessage(&dispatcher.Config{}),
+					serial.ToTypedMessage(&proxyman.InboundConfig{}),
+					serial.ToTypedMessage(&proxyman.OutboundConfig{}),
+				},
+				Outbound: []*core.OutboundHandlerConfig{{
+					SenderSettings: serial.ToTypedMessage(strategy.sender),
+					ProxySettings: serial.ToTypedMessage(&freedom.Config{
+						FinalRules: []*freedom.FinalRuleConfig{
+							{
+								Action: freedom.RuleAction_Block,
+								Ip: []*geodata.IPRule{{Value: &geodata.IPRule_Custom{
+									Custom: &geodata.CIDRRule{Cidr: &geodata.CIDR{Ip: blockedIP.IP(), Prefix: 32}},
+								}}},
+							},
+							{Action: freedom.RuleAction_Allow},
+						},
+					}),
+				}},
+			}
+			cfgBytes, err := proto.Marshal(config)
+			common.Must(err)
+			server, err := core.StartInstance("protobuf", cfgBytes)
+			common.Must(err)
+			return server
+		}
+
+		instanceA := start(dest.Address, otherIP)
+		instanceB := start(otherIP, dest.Address)
+
+		conn, err := core.Dial(context.Background(), instanceA, target)
+		common.Must(err)
+
+		payload := make([]byte, 1024)
+		common.Must2(rand.Read(payload))
+		if _, err := conn.Write(payload); err != nil {
+			t.Fatal(err)
+		}
+		receive := make([]byte, len(payload))
+		if _, err := io.ReadFull(conn, receive); err != nil {
+			t.Fatal("instance A did not resolve with its own DNS for ", strategy.name, ": ", err)
+		}
+		conn.Close()
+
+		if r := cmp.Diff(xor(receive), payload); r != "" {
+			t.Error(r)
+		}
+
+		instanceA.Close()
+		instanceB.Close()
 	}
 }
 

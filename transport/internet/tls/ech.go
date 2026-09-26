@@ -138,12 +138,15 @@ func (c *ECHConfigCache) Update(ctx context.Context, domain string, server strin
 
 // QueryRecord returns the ECH config for given domain.
 // If the record is not in cache or expired, it will query the DNS server and update the cache.
-// The query can outlive the dial that asks for it, so of ctx it keeps only the outbound manager, which
-// the dialerProxy of sockopt resolves in.
+// The query can outlive the dial that asks for it, so of ctx it keeps only the outbound manager and the
+// DNS client, for the dialerProxy and the domainStrategy of sockopt.
 func QueryRecord(ctx context.Context, domain string, server string, sockopt *internet.SocketConfig) ([]byte, error) {
 	queryCtx := context.Background()
 	if om := internet.OutboundManagerFromContext(ctx); om != nil {
 		queryCtx = internet.ContextWithOutboundManager(queryCtx, om)
+	}
+	if dc := internet.DNSClientFromContext(ctx); dc != nil {
+		queryCtx = internet.ContextWithDNSClient(queryCtx, dc)
 	}
 	GlobalECHConfigCacheKey := ECHCacheKey(server, domain, sockopt)
 	echConfigCache, ok := GlobalECHConfigCache.Load(GlobalECHConfigCacheKey)

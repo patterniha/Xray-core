@@ -364,13 +364,13 @@ func (r *RandCarrier) Read(p []byte) (n int, err error) {
 }
 
 // GetTLSConfig converts this Config into tls.Config. A dial should use GetTLSConfigWithContext instead,
-// so that the ECH config query finds the dialerProxy of echSockopt among the outbounds of its instance.
+// so that the ECH config query uses the outbounds and the DNS client of its instance for echSockopt.
 func (c *Config) GetTLSConfig(opts ...Option) *tls.Config {
 	return c.GetTLSConfigWithContext(context.Background(), opts...)
 }
 
-// GetTLSConfigWithContext is GetTLSConfig for a dial made in ctx, whose outbound manager the ECH config
-// query uses to find the dialerProxy of echSockopt.
+// GetTLSConfigWithContext is GetTLSConfig for a dial made in ctx, whose outbound manager and DNS client the
+// ECH config query uses for the dialerProxy and the domainStrategy of echSockopt.
 func (c *Config) GetTLSConfigWithContext(ctx context.Context, opts ...Option) *tls.Config {
 	root, err := c.getCertPool()
 	if err != nil {

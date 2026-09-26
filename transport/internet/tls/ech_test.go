@@ -13,7 +13,10 @@ import (
 	"github.com/miekg/dns"
 	"github.com/xtls/xray-core/common"
 	"github.com/xtls/xray-core/common/buf"
+	"github.com/xtls/xray-core/common/net"
 	"github.com/xtls/xray-core/common/serial"
+	"github.com/xtls/xray-core/common/session"
+	xdns "github.com/xtls/xray-core/features/dns"
 	"github.com/xtls/xray-core/features/outbound"
 	"github.com/xtls/xray-core/transport"
 	"github.com/xtls/xray-core/transport/internet"
@@ -75,10 +78,11 @@ func TestECHDialFail(t *testing.T) {
 }
 
 // echQueryOutbound is an outbound tagged "ech-out" that answers the ECH config query it gets over UDP
-// with an HTTPS record carrying echConfig.
+// with an HTTPS record carrying echConfig, and keeps the destination the query was sent to.
 type echQueryOutbound struct {
 	echConfig []byte
 	queried   atomic.Bool
+	target    atomic.Pointer[net.Destination]
 }
 
 func (o *echQueryOutbound) Start() error                         { return nil }
@@ -89,6 +93,10 @@ func (o *echQueryOutbound) ProxySettings() *serial.TypedMessage  { return nil }
 
 func (o *echQueryOutbound) Dispatch(ctx context.Context, link *transport.Link) {
 	o.queried.Store(true)
+	if outbounds := session.OutboundsFromContext(ctx); len(outbounds) > 0 {
+		target := outbounds[len(outbounds)-1].Target
+		o.target.Store(&target)
+	}
 	mb, err := link.Reader.ReadMultiBuffer()
 	if err != nil {
 		return
@@ -141,6 +149,45 @@ func (m *echQueryOutbounds) RemoveHandler(ctx context.Context, tag string) error
 
 func (m *echQueryOutbounds) ListHandlers(ctx context.Context) []outbound.Handler {
 	return []outbound.Handler{m.handler}
+}
+
+// echQueryDNS is the DNS client of an instance that resolves every domain to ip.
+type echQueryDNS struct {
+	ip net.IP
+}
+
+func (d *echQueryDNS) Type() interface{} { return xdns.ClientType() }
+func (d *echQueryDNS) Start() error      { return nil }
+func (d *echQueryDNS) Close() error      { return nil }
+
+func (d *echQueryDNS) LookupIP(domain string, option xdns.IPOption) ([]net.IP, uint32, error) {
+	return []net.IP{d.ip}, 300, nil
+}
+
+func TestECHQueryResolvesWithDNSOfTheDial(t *testing.T) {
+	// A DNS server named by domain, with a domainStrategy in echSockopt, resolves with the DNS client of
+	// the instance that the dial belongs to, not with the one of the instance created last.
+	own := &echQueryOutbound{echConfig: []byte{1, 2, 3, 4}}
+	internet.InitSystemDialer(&echQueryDNS{ip: net.ParseIP("192.0.2.99")}, &echQueryOutbounds{handler: own})
+	defer internet.InitSystemDialer(nil, nil)
+
+	config := &Config{
+		ServerName:    "ech.example",
+		EchConfigList: "ech.example+udp://dns.example",
+		EchSocketSettings: &internet.SocketConfig{
+			DialerProxy:    "ech-out",
+			DomainStrategy: internet.DomainStrategy_USE_IP4,
+		},
+	}
+	ctx := internet.ContextWithOutboundManager(context.Background(), &echQueryOutbounds{handler: own})
+	ctx = internet.ContextWithDNSClient(ctx, &echQueryDNS{ip: net.ParseIP("192.0.2.53")})
+
+	if got := config.GetTLSConfigWithContext(ctx).EncryptedClientHelloConfigList; !slices.Equal(got, own.echConfig) {
+		t.Error("the ECH config ", got, " did not come through the dialerProxy of the instance of the dial")
+	}
+	if target := own.target.Load(); target == nil || target.Address.String() != "192.0.2.53" {
+		t.Error("the DNS server of the ECH config query was not resolved with the DNS client of the dial: ", target)
+	}
 }
 
 func TestECHQueryThroughDialerProxyOfTheDial(t *testing.T) {

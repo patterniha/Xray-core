@@ -18,6 +18,7 @@ import (
 	"github.com/xtls/xray-core/common/serial"
 	"github.com/xtls/xray-core/common/session"
 	"github.com/xtls/xray-core/core"
+	"github.com/xtls/xray-core/features/dns"
 	"github.com/xtls/xray-core/features/outbound"
 	"github.com/xtls/xray-core/features/policy"
 	"github.com/xtls/xray-core/features/stats"
@@ -66,6 +67,7 @@ type Handler struct {
 	uplinkCounter   stats.Counter
 	downlinkCounter stats.Counter
 	outboundManager outbound.Manager
+	dnsClient       dns.Client
 }
 
 // NewHandler creates a new Handler based on the given configuration.
@@ -78,6 +80,7 @@ func NewHandler(ctx context.Context, config *core.OutboundHandlerConfig) (outbou
 		downlinkCounter: downlinkCounter,
 	}
 	h.outboundManager, _ = v.GetFeature(outbound.ManagerType()).(outbound.Manager)
+	h.dnsClient, _ = v.GetFeature(dns.ClientType()).(dns.Client)
 
 	if config.SenderSettings != nil {
 		senderSettings, err := config.SenderSettings.GetInstance()
@@ -178,7 +181,7 @@ func (h *Handler) Tag() string {
 
 // Dispatch implements proxy.Outbound.Dispatch.
 func (h *Handler) Dispatch(ctx context.Context, link *transport.Link) {
-	ctx = h.withOutboundManager(ctx)
+	ctx = h.withInstanceFeatures(ctx)
 	outbounds := session.OutboundsFromContext(ctx)
 	ob := outbounds[len(outbounds)-1]
 	content := session.ContentFromContext(ctx)
@@ -187,7 +190,7 @@ func (h *Handler) Dispatch(ctx context.Context, link *transport.Link) {
 		if ob.Target.Network == net.Network_UDP && ob.OriginalTarget.Address != nil {
 			strategy = strategy.GetDynamicStrategy(ob.OriginalTarget.Address.Family())
 		}
-		ips, err := internet.LookupForIP(ob.Target.Address.Domain(), strategy, nil)
+		ips, err := internet.LookupForIP(ctx, ob.Target.Address.Domain(), strategy, nil)
 		if err != nil {
 			errors.LogInfoInner(ctx, err, "failed to resolve ip for target ", ob.Target.Address.Domain())
 			if h.senderSettings.TargetStrategy.ForceIP() {
@@ -267,19 +270,22 @@ func (h *Handler) DestIpAddress() net.IP {
 	return internet.DestIpAddress()
 }
 
-// withOutboundManager makes the dialerProxy of the dials in ctx resolve in the outbounds of this
-// handler's instance, even when other instances run in the same process. Dial sets it as well as
-// Dispatch, since a mux connection is dialed in a context of its own.
-func (h *Handler) withOutboundManager(ctx context.Context) context.Context {
-	if h.outboundManager == nil || internet.OutboundManagerFromContext(ctx) == h.outboundManager {
-		return ctx
+// withInstanceFeatures makes the dials in ctx look the dialerProxy up in the outbounds, and resolve
+// domains with the DNS client, of this handler's instance, even when other instances run in the same
+// process. Dial sets them as well as Dispatch, since a mux connection is dialed in a context of its own.
+func (h *Handler) withInstanceFeatures(ctx context.Context) context.Context {
+	if h.outboundManager != nil && internet.OutboundManagerFromContext(ctx) != h.outboundManager {
+		ctx = internet.ContextWithOutboundManager(ctx, h.outboundManager)
 	}
-	return internet.ContextWithOutboundManager(ctx, h.outboundManager)
+	if h.dnsClient != nil && internet.DNSClientFromContext(ctx) != h.dnsClient {
+		ctx = internet.ContextWithDNSClient(ctx, h.dnsClient)
+	}
+	return ctx
 }
 
 // Dial implements internet.Dialer.
 func (h *Handler) Dial(ctx context.Context, dest net.Destination) (stat.Connection, error) {
-	ctx = h.withOutboundManager(ctx)
+	ctx = h.withInstanceFeatures(ctx)
 	if h.senderSettings != nil && h.senderSettings.Via != nil {
 		outbounds := session.OutboundsFromContext(ctx)
 		ob := outbounds[len(outbounds)-1]
