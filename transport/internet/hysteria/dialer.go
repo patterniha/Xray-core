@@ -17,7 +17,6 @@ import (
 	"github.com/xtls/xray-core/common/errors"
 	"github.com/xtls/xray-core/common/net"
 	"github.com/xtls/xray-core/common/net/cnc"
-	"github.com/xtls/xray-core/core"
 	"github.com/xtls/xray-core/transport/internet"
 	"github.com/xtls/xray-core/transport/internet/finalmask"
 	"github.com/xtls/xray-core/transport/internet/hysteria/congestion"
@@ -36,11 +35,10 @@ type client struct {
 	finalMask    *finalmask.FinalMask
 	quicParams   *internet.QuicParams
 
-	conn     *quic.Conn
-	tr       *quic.Transport
-	pktConn  net.PacketConn
-	udpSM    *udpSessionManager
-	instance *core.Instance
+	conn    *quic.Conn
+	tr      *quic.Transport
+	pktConn net.PacketConn
+	udpSM   *udpSessionManager
 }
 
 func (c *client) status() status {
@@ -56,11 +54,9 @@ func (c *client) status() status {
 }
 
 func (c *client) close() {
-	if c.conn != nil {
-		c.conn.CloseWithError(closeErrCodeOK, "")
-	}
-	common.CloseIfExists(c.tr)
-	common.CloseIfExists(c.pktConn)
+	c.conn.CloseWithError(closeErrCodeOK, "")
+	c.tr.Close()
+	c.pktConn.Close()
 	c.conn = nil
 	c.tr = nil
 	c.pktConn = nil
@@ -260,18 +256,12 @@ func (c *client) udp(ctx context.Context) (stat.Connection, error) {
 	return c.udpSM.udp()
 }
 
-func (c *client) clean() (shouldDelete bool) {
+func (c *client) clean() {
 	c.Lock()
-	defer c.Unlock()
-	if c.instance != nil && !c.instance.IsRunning() {
-		c.close()
-		return true
-	}
 	if c.status() == StatusInactive {
 		c.close()
-		return false
 	}
-	return false
+	c.Unlock()
 }
 
 type dialerConf struct {
@@ -287,21 +277,11 @@ type clientManager struct {
 func (m *clientManager) clean() {
 	ticker := time.NewTicker(idleCleanupInterval)
 	for range ticker.C {
-		var toDelete []dialerConf
 		m.RLock()
-		for k, c := range m.m {
-			if c.clean() {
-				toDelete = append(toDelete, k)
-			}
+		for _, c := range m.m {
+			c.clean()
 		}
 		m.RUnlock()
-		if len(toDelete) > 0 {
-			m.Lock()
-			for _, k := range toDelete {
-				delete(m.m, k)
-			}
-			m.Unlock()
-		}
 	}
 }
 
@@ -326,17 +306,15 @@ func Dial(ctx context.Context, dest net.Destination, streamSettings *internet.Me
 		go manager.clean()
 	})
 
-	dialerConfKey := dialerConf{dest, streamSettings}
 	manager.RLock()
-	c := manager.m[dialerConfKey]
+	c := manager.m[dialerConf{dest, streamSettings}]
 	manager.RUnlock()
 
 	if c == nil {
 		manager.Lock()
-		c = manager.m[dialerConfKey]
+		c = manager.m[dialerConf{dest, streamSettings}]
 		if c == nil {
 			c = &client{
-				instance:     core.FromContext(ctx),
 				dest:         dest,
 				config:       streamSettings.ProtocolSettings.(*Config),
 				tlsConfig:    tlsConfig.GetTLSConfig(tls.WithDestination(dest)),
@@ -344,7 +322,7 @@ func Dial(ctx context.Context, dest net.Destination, streamSettings *internet.Me
 				finalMask:    streamSettings.FinalMask,
 				quicParams:   streamSettings.QuicParams,
 			}
-			manager.m[dialerConfKey] = c
+			manager.m[dialerConf{dest, streamSettings}] = c
 		}
 		manager.Unlock()
 	}
