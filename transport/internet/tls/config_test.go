@@ -1,6 +1,7 @@
 package tls_test
 
 import (
+	"bytes"
 	gotls "crypto/tls"
 	"crypto/x509"
 	"testing"
@@ -95,5 +96,41 @@ func BenchmarkCertificateIssuing(b *testing.B) {
 		})
 		delete(tlsConfig.NameToCertificate, "www.example.com")
 		tlsConfig.Certificates = tlsConfig.Certificates[:lenCerts]
+	}
+}
+
+func TestCertificateSelection(t *testing.T) {
+	byCN, _ := cert.MustGenerate(nil, cert.CommonName("cn.example.com"), cert.DNSNames("san.example.com"))
+	mixed, _ := cert.MustGenerate(nil, cert.DNSNames("Mixed.Example.com", "*.wild.example.com"))
+	noCN, _ := cert.MustGenerate(nil, cert.DNSNames("nocn.example.com"))
+
+	tlsConfig := (&Config{
+		Certificate:      []*Certificate{ParseCertificate(byCN), ParseCertificate(mixed), ParseCertificate(noCN)},
+		RejectUnknownSni: true,
+	}).GetTLSConfig()
+
+	for _, test := range []struct {
+		serverName string
+		want       *cert.Certificate
+	}{
+		{"san.example.com", byCN},
+		{"cn.example.com", nil},
+		{"mixed.example.com", mixed},
+		{"a.wild.example.com", mixed},
+		{"wild.example.com", nil},
+		{"a.b.wild.example.com", nil},
+		{"nocn.example.com", noCN},
+		{"", nil},
+	} {
+		got, err := tlsConfig.GetCertificate(&gotls.ClientHelloInfo{ServerName: test.serverName})
+		if test.want == nil {
+			if err == nil {
+				t.Errorf("%q: got a certificate, want none", test.serverName)
+			}
+			continue
+		}
+		if err != nil || !bytes.Equal(got.Certificate[0], test.want.Certificate) {
+			t.Errorf("%q: got the wrong certificate (err: %v)", test.serverName, err)
+		}
 	}
 }

@@ -249,22 +249,12 @@ func getNewGetCertificateFunc(certs []*tls.Certificate, rejectUnknownSNI bool) f
 		if len(certs) == 0 {
 			return nil, errNoCertificates
 		}
-		sni := strings.ToLower(hello.ServerName)
-		if !rejectUnknownSNI && (len(certs) == 1 || sni == "") {
+		if !rejectUnknownSNI && (len(certs) == 1 || hello.ServerName == "") {
 			return certs[0], nil
 		}
-		gsni := "*"
-		if index := strings.IndexByte(sni, '.'); index != -1 {
-			gsni += sni[index:]
-		}
 		for _, keyPair := range certs {
-			if keyPair.Leaf.Subject.CommonName == sni || keyPair.Leaf.Subject.CommonName == gsni {
+			if keyPair.Leaf.VerifyHostname(hello.ServerName) == nil {
 				return keyPair, nil
-			}
-			for _, name := range keyPair.Leaf.DNSNames {
-				if name == sni || name == gsni {
-					return keyPair, nil
-				}
 			}
 		}
 		if rejectUnknownSNI {
