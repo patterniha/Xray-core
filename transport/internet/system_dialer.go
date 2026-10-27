@@ -49,23 +49,31 @@ func resolveSrcAddr(network net.Network, src net.Address) net.Addr {
 }
 
 func (d *DefaultSystemDialer) Dial(ctx context.Context, src net.Address, dest net.Destination, sockopt *SocketConfig) (net.Conn, error) {
-	var dialMode string // "dialMode" from sockopt in the config, "" when not set
-	if sockopt != nil {
-		dialMode = sockopt.DialMode
-	}
-	msg := "dialing to " + dest.String()
+	dialMode := sockopt.GetDialMode()
 	if dialMode != "" {
-		msg += " with dialMode " + dialMode
+		// Each dialMode has a case here, with the code it runs before DialInitial, if any.
+		// Change a copy of sockopt, not sockopt itself: every dial of the outbound shares it.
+		switch dialMode {
+		default:
+			return nil, errors.New("unsupported dialMode: ", dialMode)
+		}
 	}
-	errors.LogDebug(ctx, msg)
 
-	// Add a case per dialMode value to run different dialing code.
-	// An empty dialMode runs the default code below.
-	switch dialMode {
-	case "":
-	default:
-		return nil, errors.New("unsupported dialMode: ", dialMode)
+	conn, err := d.DialInitial(ctx, src, dest, sockopt)
+	if err != nil {
+		return conn, err
 	}
+
+	if dialMode != "" {
+		// The code each dialMode runs after DialInitial goes here, working on conn.
+		return conn, err
+	} else {
+		return conn, err
+	}
+}
+
+func (d *DefaultSystemDialer) DialInitial(ctx context.Context, src net.Address, dest net.Destination, sockopt *SocketConfig) (net.Conn, error) {
+	errors.LogDebug(ctx, "dialing to "+dest.String())
 
 	if dest.Network == net.Network_UDP {
 		destAddr, err := net.ResolveUDPAddr("udp", dest.NetAddr())
