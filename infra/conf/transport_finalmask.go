@@ -22,6 +22,7 @@ import (
 	"github.com/xtls/xray-core/transport/internet/finalmask/filter"
 	"github.com/xtls/xray-core/transport/internet/finalmask/fragment"
 	"github.com/xtls/xray-core/transport/internet/finalmask/header/custom"
+	"github.com/xtls/xray-core/transport/internet/finalmask/merge"
 	"github.com/xtls/xray-core/transport/internet/finalmask/mkcp/aes128gcm"
 	"github.com/xtls/xray-core/transport/internet/finalmask/mkcp/header"
 	"github.com/xtls/xray-core/transport/internet/finalmask/mkcp/original"
@@ -79,6 +80,7 @@ var (
 		"filter":        func() interface{} { return new(Filter) },
 		"header-custom": func() interface{} { return new(HeaderCustomTCP) },
 		"fragment":      func() interface{} { return new(FragmentMask) },
+		"merge":         func() interface{} { return new(MergeMask) },
 		"sudoku":        func() interface{} { return new(Sudoku) },
 		"xmc":           func() interface{} { return new(XMC) },
 	}, "type", "settings")
@@ -318,6 +320,20 @@ func (c *FragmentMask) Build() (proto.Message, error) {
 	config.MaxSplitMax = int64(c.MaxSplit.To)
 
 	return config, nil
+}
+
+type MergeMask struct {
+	Times    int32 `json:"times"`
+	DelayMs  int32 `json:"delayMs"`
+	MaxBytes int32 `json:"maxBytes"`
+}
+
+func (c *MergeMask) Build() (proto.Message, error) {
+	return &merge.Config{
+		Times:    c.Times,
+		DelayMs:  c.DelayMs,
+		MaxBytes: c.MaxBytes,
+	}, nil
 }
 
 type NoiseItem struct {
