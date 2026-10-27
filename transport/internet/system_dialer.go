@@ -4,6 +4,7 @@ import (
 	"context"
 	go_errors "errors"
 	"runtime"
+	"strings"
 	"sync"
 	"syscall"
 	"time"
@@ -53,7 +54,11 @@ func (d *DefaultSystemDialer) Dial(ctx context.Context, src net.Address, dest ne
 	if dialMode != "" {
 		// Each dialMode has a case here, with the code it runs before DialInitial, if any.
 		// Change a copy of sockopt, not sockopt itself: every dial of the outbound shares it.
-		switch dialMode {
+		switch {
+		case strings.HasPrefix(dialMode, oobDialModePrefix):
+			if _, err := parseOOBDialMode(dialMode); err != nil {
+				return nil, err
+			}
 		default:
 			return nil, errors.New("unsupported dialMode: ", dialMode)
 		}
@@ -66,6 +71,14 @@ func (d *DefaultSystemDialer) Dial(ctx context.Context, src net.Address, dest ne
 
 	if dialMode != "" {
 		// The code each dialMode runs after DialInitial goes here, working on conn.
+		switch {
+		case strings.HasPrefix(dialMode, oobDialModePrefix):
+			// Append a byte to each of the first writes and mark them urgent (TCP MSG_OOB); UDP is left as is.
+			if dest.Network == net.Network_TCP {
+				oobBytes, _ := parseOOBDialMode(dialMode)
+				conn = newOOBConn(conn, oobBytes)
+			}
+		}
 		return conn, err
 	} else {
 		return conn, err
