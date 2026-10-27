@@ -32,6 +32,8 @@ import (
 type DoHNameServer struct {
 	cacheController *CacheController
 	httpClient      *http.Client
+	dialContext     func(ctx context.Context, network, addr string, cfg *tls.Config) (net.Conn, error)
+	oneConn         bool
 	dohURL          string
 	clientIP        net.IP
 }
@@ -49,63 +51,68 @@ func NewDoHNameServer(url *url.URL, dispatcher routing.Dispatcher, h2c bool, dis
 		dohURL:          url.String(),
 		clientIP:        clientIP,
 	}
+	s.dialContext = func(ctx context.Context, network, addr string, cfg *tls.Config) (net.Conn, error) {
+		dest, err := net.ParseDestination(network + ":" + addr)
+		if err != nil {
+			return nil, err
+		}
+		var conn net.Conn
+		if dispatcher != nil {
+			dnsCtx := toDnsContext(ctx, s.dohURL)
+			if h2c {
+				dnsCtx = session.ContextWithMitmAlpn11(dnsCtx, false) // for insurance
+				dnsCtx = session.ContextWithMitmServerName(dnsCtx, url.Hostname())
+			}
+			link, err := dispatcher.Dispatch(dnsCtx, dest)
+			select {
+			case <-ctx.Done():
+				return nil, ctx.Err()
+			default:
+			}
+			if err != nil {
+				return nil, err
+			}
+			cc := common.ChainedClosable{}
+			if cw, ok := link.Writer.(common.Closable); ok {
+				cc = append(cc, cw)
+			}
+			if cr, ok := link.Reader.(common.Closable); ok {
+				cc = append(cc, cr)
+			}
+			conn = cnc.NewConnection(
+				cnc.ConnectionInputMulti(link.Writer),
+				cnc.ConnectionOutputMulti(link.Reader),
+				cnc.ConnectionOnClose(cc),
+			)
+		} else {
+			log.Record(&log.AccessMessage{
+				From:   "DNS",
+				To:     s.dohURL,
+				Status: log.AccessAccepted,
+				Detour: "local",
+			})
+			conn, err = internet.DialSystem(ctx, dest, nil)
+			if err != nil {
+				return nil, err
+			}
+		}
+		if !h2c {
+			fingerprint := utls.HelloChrome_Auto
+			if s.oneConn {
+				fingerprint = utls.HelloChrome_120 // smaller ClientHello: no post-quantum key share
+			}
+			conn = utls.UClient(conn, &utls.Config{ServerName: url.Hostname()}, fingerprint)
+			if err := conn.(*utls.UConn).HandshakeContext(ctx); err != nil {
+				return nil, err
+			}
+		}
+		return conn, nil
+	}
 	s.httpClient = &http.Client{
 		Transport: &http2.Transport{
 			IdleConnTimeout: net.ConnIdleTimeout,
 			ReadIdleTimeout: net.ChromeH2KeepAlivePeriod,
-			DialTLSContext: func(ctx context.Context, network, addr string, cfg *tls.Config) (net.Conn, error) {
-				dest, err := net.ParseDestination(network + ":" + addr)
-				if err != nil {
-					return nil, err
-				}
-				var conn net.Conn
-				if dispatcher != nil {
-					dnsCtx := toDnsContext(ctx, s.dohURL)
-					if h2c {
-						dnsCtx = session.ContextWithMitmAlpn11(dnsCtx, false) // for insurance
-						dnsCtx = session.ContextWithMitmServerName(dnsCtx, url.Hostname())
-					}
-					link, err := dispatcher.Dispatch(dnsCtx, dest)
-					select {
-					case <-ctx.Done():
-						return nil, ctx.Err()
-					default:
-					}
-					if err != nil {
-						return nil, err
-					}
-					cc := common.ChainedClosable{}
-					if cw, ok := link.Writer.(common.Closable); ok {
-						cc = append(cc, cw)
-					}
-					if cr, ok := link.Reader.(common.Closable); ok {
-						cc = append(cc, cr)
-					}
-					conn = cnc.NewConnection(
-						cnc.ConnectionInputMulti(link.Writer),
-						cnc.ConnectionOutputMulti(link.Reader),
-						cnc.ConnectionOnClose(cc),
-					)
-				} else {
-					log.Record(&log.AccessMessage{
-						From:   "DNS",
-						To:     s.dohURL,
-						Status: log.AccessAccepted,
-						Detour: "local",
-					})
-					conn, err = internet.DialSystem(ctx, dest, nil)
-					if err != nil {
-						return nil, err
-					}
-				}
-				if !h2c {
-					conn = utls.UClient(conn, &utls.Config{ServerName: url.Hostname()}, utls.HelloChrome_Auto)
-					if err := conn.(*utls.UConn).HandshakeContext(ctx); err != nil {
-						return nil, err
-					}
-				}
-				return conn, nil
-			},
+			DialTLSContext:  s.dialContext,
 		},
 	}
 	return s
@@ -150,7 +157,12 @@ func (s *DoHNameServer) sendQuery(ctx context.Context, noResponseErrCh chan<- er
 
 	// As we don't want our traffic pattern looks like DoH, we use Random-Length Padding instead of Block-Length Padding recommended in RFC 8467
 	// Although DoH server like 1.1.1.1 will pad the response to Block-Length 468, at least it is better than no padding for response at all
-	reqs, err := buildReqMsgs(fqdn, option, s.newReqID, genEDNS0Options(s.clientIP, int(crypto.RandBetween(100, 300))))
+	// The "+one" modes skip padding to keep each query minimal.
+	padding := int(crypto.RandBetween(100, 300))
+	if s.oneConn {
+		padding = 0
+	}
+	reqs, err := buildReqMsgs(fqdn, option, s.newReqID, genEDNS0Options(s.clientIP, padding))
 	if err != nil {
 		errors.LogErrorInner(ctx, err, "failed to build dns query for ", fqdn)
 		if noResponseErrCh != nil {
@@ -232,10 +244,23 @@ func (s *DoHNameServer) dohHTTPSContext(ctx context.Context, b []byte) ([]byte, 
 
 	req.Header.Add("Accept", "application/dns-message")
 	req.Header.Add("Content-Type", "application/dns-message")
-	utils.TryDefaultHeadersWith(req.Header, "fetch")
-	req.Header.Set("X-Padding", utils.H2Base62Pad(crypto.RandBetween(100, 1000)))
 
 	hc := s.httpClient
+	if s.oneConn {
+		// "+one" modes: a fresh TCP+TLS connection per query (no reuse), no padding, and no
+		// browser-masquerade headers. An empty User-Agent makes net/http omit its default one.
+		req.Header.Set("User-Agent", "")
+		transport := &http2.Transport{
+			IdleConnTimeout: net.ConnIdleTimeout,
+			ReadIdleTimeout: net.ChromeH2KeepAlivePeriod,
+			DialTLSContext:  s.dialContext,
+		}
+		defer transport.CloseIdleConnections()
+		hc = &http.Client{Transport: transport}
+	} else {
+		utils.TryDefaultHeadersWith(req.Header, "fetch")
+		req.Header.Set("X-Padding", utils.H2Base62Pad(crypto.RandBetween(100, 1000)))
+	}
 
 	resp, err := hc.Do(req.WithContext(ctx))
 	if err != nil {
