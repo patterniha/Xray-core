@@ -177,12 +177,18 @@ func dnsQuery(server string, domain string, sockopt *internet.SocketConfig) ([]b
 	var dnsResolve []byte
 	m.SetQuestion(dns.Fqdn(domain), dns.TypeHTTPS)
 	// for DOH server
-	if strings.HasPrefix(server, "https://") || strings.HasPrefix(server, "h2c://") {
-		h2c := strings.HasPrefix(server, "h2c://")
-		m.SetEdns0(4096, false) // 4096 is the buffer size, false means no DNSSEC
-		padding := &dns.EDNS0_PADDING{Padding: make([]byte, int(crypto.RandBetween(100, 300)))}
-		if opt := m.IsEdns0(); opt != nil {
-			opt.Option = append(opt.Option, padding)
+	if strings.HasPrefix(server, "https://") || strings.HasPrefix(server, "h2c://") ||
+		strings.HasPrefix(server, "https+one://") || strings.HasPrefix(server, "h2c+one://") {
+		h2c := strings.HasPrefix(server, "h2c://") || strings.HasPrefix(server, "h2c+one://")
+		// "+one" variants (example.com+https+one:// / +h2c+one://): one connection per query,
+		// no padding, no browser-masquerade headers, no User-Agent, HelloChrome_120 for https.
+		oneConn := strings.HasPrefix(server, "https+one://") || strings.HasPrefix(server, "h2c+one://")
+		if !oneConn {
+			m.SetEdns0(4096, false) // 4096 is the buffer size, false means no DNSSEC
+			padding := &dns.EDNS0_PADDING{Padding: make([]byte, int(crypto.RandBetween(100, 300)))}
+			if opt := m.IsEdns0(); opt != nil {
+				opt.Option = append(opt.Option, padding)
+			}
 		}
 		// always 0 in DOH
 		m.Id = 0
@@ -191,11 +197,14 @@ func dnsQuery(server string, domain string, sockopt *internet.SocketConfig) ([]b
 			return nil, 0, err
 		}
 		var client *http.Client
-		serverKey := ECHCacheKey(server, "", sockopt)
-		if client, _ = clientForECHDOH.Load(serverKey); client == nil {
-			// All traffic sent by core should via xray's internet.DialSystem
-			// This involves the behavior of some Android VPN GUI clients
-			tr := &http2.Transport{
+		fingerprint := utls.HelloChrome_Auto
+		if oneConn {
+			fingerprint = utls.HelloChrome_120 // smaller ClientHello: no post-quantum key share
+		}
+		// All traffic sent by core should via xray's internet.DialSystem
+		// This involves the behavior of some Android VPN GUI clients
+		newTransport := func() *http2.Transport {
+			return &http2.Transport{
 				IdleConnTimeout: net.ConnIdleTimeout,
 				ReadIdleTimeout: net.ChromeH2KeepAlivePeriod,
 				DialTLSContext: func(ctx context.Context, network, addr string, cfg *tls.Config) (net.Conn, error) {
@@ -219,7 +228,7 @@ func dnsQuery(server string, domain string, sockopt *internet.SocketConfig) ([]b
 					}
 
 					if !h2c {
-						conn = utls.UClient(conn, &utls.Config{ServerName: host}, utls.HelloChrome_Auto)
+						conn = utls.UClient(conn, &utls.Config{ServerName: host}, fingerprint)
 						if err := conn.(*utls.UConn).HandshakeContext(ctx); err != nil {
 							return nil, err
 						}
@@ -227,11 +236,21 @@ func dnsQuery(server string, domain string, sockopt *internet.SocketConfig) ([]b
 					return conn, nil
 				},
 			}
-			c := &http.Client{
-				Timeout:   30 * time.Second,
-				Transport: tr,
+		}
+		if oneConn {
+			// Fresh transport per query (no reuse); torn down after the request.
+			tr := newTransport()
+			defer tr.CloseIdleConnections()
+			client = &http.Client{Timeout: 30 * time.Second, Transport: tr}
+		} else {
+			serverKey := ECHCacheKey(server, "", sockopt)
+			if client, _ = clientForECHDOH.Load(serverKey); client == nil {
+				c := &http.Client{
+					Timeout:   30 * time.Second,
+					Transport: newTransport(),
+				}
+				client, _ = clientForECHDOH.LoadOrStore(serverKey, c)
 			}
-			client, _ = clientForECHDOH.LoadOrStore(serverKey, c)
 		}
 		req, err := http.NewRequest("POST", server, bytes.NewReader(msg))
 		if err != nil {
@@ -242,8 +261,12 @@ func dnsQuery(server string, domain string, sockopt *internet.SocketConfig) ([]b
 		req.URL.Scheme = "https"
 		req.Header.Set("Accept", "application/dns-message")
 		req.Header.Set("Content-Type", "application/dns-message")
-		utils.TryDefaultHeadersWith(req.Header, "fetch")
-		req.Header.Set("X-Padding", utils.H2Base62Pad(crypto.RandBetween(100, 1000)))
+		if oneConn {
+			req.Header.Set("User-Agent", "") // omit the default Go User-Agent
+		} else {
+			utils.TryDefaultHeadersWith(req.Header, "fetch")
+			req.Header.Set("X-Padding", utils.H2Base62Pad(crypto.RandBetween(100, 1000)))
+		}
 
 		resp, err := client.Do(req)
 		if err != nil {
