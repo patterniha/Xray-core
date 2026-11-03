@@ -73,10 +73,10 @@ func (d *DefaultSystemDialer) Dial(ctx context.Context, src net.Address, dest ne
 		// The code each dialMode runs after DialInitial goes here, working on conn.
 		switch {
 		case strings.HasPrefix(dialMode, oobDialModePrefix):
-			// Append a byte to each of the first writes and mark them urgent (TCP MSG_OOB); UDP is left as is.
+			// Apply the oob. list to the first writes (append a byte + mark urgent, or leave as is for "_"); UDP is left as is.
 			if dest.Network == net.Network_TCP {
-				oobBytes, _ := parseOOBDialMode(dialMode)
-				conn = newOOBConn(conn, oobBytes)
+				steps, _ := parseOOBDialMode(dialMode)
+				conn = newOOBConn(conn, steps)
 			}
 		}
 		return conn, err

@@ -9,29 +9,35 @@ import (
 	"github.com/xtls/xray-core/common/net"
 )
 
-// oobConn appends a byte to each of the first len(oobBytes) writes and sends each as TCP
-// urgent (out-of-band) data, using oobBytes[i] for write i; later writes go straight to
-// the underlying connection. A peer that handles urgent data drops the extra byte back
-// out of the stream, while a middlebox that mishandles the urgent pointer desyncs on
-// those segments (e.g. a TLS ClientHello). A zero-length write still counts: it sends its
-// urgent byte on its own, ahead of any real data.
+// oobConn tags each of the first len(steps) writes as its step says: it either appends that
+// step's byte and sends the write as TCP urgent (out-of-band) data, or, for a passthrough
+// step, leaves the write untouched. Later writes go straight to the underlying connection.
+// A peer that handles urgent data drops the extra byte back out of the stream, while a
+// middlebox that mishandles the urgent pointer desyncs on those segments (e.g. a TLS
+// ClientHello). A zero-length urgent write still counts: it sends its byte on its own,
+// ahead of any real data.
 type oobConn struct {
 	net.Conn
 
-	oobBytes []byte
-	idx      int
+	steps []oobStep
+	idx   int
 }
 
-func newOOBConn(conn net.Conn, oobBytes []byte) net.Conn {
-	return &oobConn{Conn: conn, oobBytes: oobBytes}
+func newOOBConn(conn net.Conn, steps []oobStep) net.Conn {
+	return &oobConn{Conn: conn, steps: steps}
 }
 
 func (c *oobConn) Write(p []byte) (int, error) {
-	if c.idx >= len(c.oobBytes) {
+	if c.idx >= len(c.steps) {
 		return c.Conn.Write(p)
 	}
-	oobByte := c.oobBytes[c.idx]
+	step := c.steps[c.idx]
 	c.idx++
+	if step.passthrough {
+		// A "_" step: send this write as is, with no appended byte and no urgent flag.
+		return c.Conn.Write(p)
+	}
+	oobByte := step.b
 
 	sc, ok := c.Conn.(syscall.Conn)
 	if !ok {
