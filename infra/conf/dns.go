@@ -162,19 +162,20 @@ func (c *NameServerConfig) Build() (*dns.NameServer, error) {
 
 // DNSConfig is a JSON serializable object for dns.Config
 type DNSConfig struct {
-	Servers                []*NameServerConfig `json:"servers"`
-	Script                 string              `json:"script"`
-	Hosts                  *HostsWrapper       `json:"hosts"`
-	ClientIP               *Address            `json:"clientIp"`
-	Tag                    string              `json:"tag"`
-	QueryStrategy          string              `json:"queryStrategy"`
-	DisableCache           bool                `json:"disableCache"`
-	ServeStale             bool                `json:"serveStale"`
-	ServeExpiredTTL        uint32              `json:"serveExpiredTTL"`
-	DisableFallback        bool                `json:"disableFallback"`
-	DisableFallbackIfMatch bool                `json:"disableFallbackIfMatch"`
-	EnableParallelQuery    bool                `json:"enableParallelQuery"`
-	UseSystemHosts         bool                `json:"useSystemHosts"`
+	Servers                 []*NameServerConfig `json:"servers"`
+	Script                  string              `json:"script"`
+	Hosts                   *HostsWrapper       `json:"hosts"`
+	ClientIP                *Address            `json:"clientIp"`
+	Tag                     string              `json:"tag"`
+	QueryStrategy           string              `json:"queryStrategy"`
+	DisableCache            bool                `json:"disableCache"`
+	ServeStale              bool                `json:"serveStale"`
+	ServeExpiredTTL         uint32              `json:"serveExpiredTTL"`
+	DisableFallback         bool                `json:"disableFallback"`
+	DisableFallbackIfMatch  bool                `json:"disableFallbackIfMatch"`
+	EnableParallelQuery     bool                `json:"enableParallelQuery"`
+	SkipHostsWhenFakeEnable bool                `json:"skipHostsWhenFakeEnable"`
+	UseSystemHosts          bool                `json:"useSystemHosts"`
 }
 
 type HostAddress struct {
@@ -284,15 +285,16 @@ func (c *DNSConfig) Build() (*dns.Config, error) {
 	}
 
 	config := &dns.Config{
-		Tag:                    c.Tag,
-		DisableCache:           c.DisableCache,
-		ServeStale:             c.ServeStale,
-		ServeExpiredTTL:        c.ServeExpiredTTL,
-		DisableFallback:        c.DisableFallback,
-		DisableFallbackIfMatch: c.DisableFallbackIfMatch,
-		EnableParallelQuery:    c.EnableParallelQuery,
-		QueryStrategy:          resolveQueryStrategy(c.QueryStrategy),
-		Script:                 c.Script,
+		Tag:                     c.Tag,
+		DisableCache:            c.DisableCache,
+		ServeStale:              c.ServeStale,
+		ServeExpiredTTL:         c.ServeExpiredTTL,
+		DisableFallback:         c.DisableFallback,
+		DisableFallbackIfMatch:  c.DisableFallbackIfMatch,
+		EnableParallelQuery:     c.EnableParallelQuery,
+		SkipHostsWhenFakeEnable: c.SkipHostsWhenFakeEnable,
+		QueryStrategy:           resolveQueryStrategy(c.QueryStrategy),
+		Script:                  c.Script,
 	}
 
 	if c.ClientIP != nil {

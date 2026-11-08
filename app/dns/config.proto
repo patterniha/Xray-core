@@ -76,4 +76,7 @@ message Config {
   bool enableParallelQuery = 14;
 
   string script = 15;
+
+  // When true, FakeDNS queries (option.FakeEnable) skip the static hosts lookup. Default false.
+  bool skipHostsWhenFakeEnable = 16;
 }

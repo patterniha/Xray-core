@@ -21,17 +21,18 @@ import (
 // DNS is a DNS rely server.
 type DNS struct {
 	sync.Mutex
-	disableFallback        bool
-	disableFallbackIfMatch bool
-	enableParallelQuery    bool
-	ipOption               *dns.IPOption
-	hosts                  *StaticHosts
-	clients                []*Client
-	ctx                    context.Context
-	domainMatcher          geodata.DomainMatcher
-	matcherInfos           []*DomainMatcherInfo
-	checkSystem            bool
-	script                 *scriptEngine
+	disableFallback         bool
+	disableFallbackIfMatch  bool
+	enableParallelQuery     bool
+	skipHostsWhenFakeEnable bool
+	ipOption                *dns.IPOption
+	hosts                   *StaticHosts
+	clients                 []*Client
+	ctx                     context.Context
+	domainMatcher           geodata.DomainMatcher
+	matcherInfos            []*DomainMatcherInfo
+	checkSystem             bool
+	script                  *scriptEngine
 }
 
 // DomainMatcherInfo contains information attached to index returned by Server.domainMatcher.
@@ -178,17 +179,18 @@ func New(ctx context.Context, config *Config) (*DNS, error) {
 	}
 
 	return &DNS{
-		hosts:                  hosts,
-		ipOption:               &ipOption,
-		clients:                clients,
-		ctx:                    ctx,
-		domainMatcher:          domainMatcher,
-		matcherInfos:           matcherInfos,
-		disableFallback:        config.DisableFallback,
-		disableFallbackIfMatch: config.DisableFallbackIfMatch,
-		enableParallelQuery:    config.EnableParallelQuery,
-		checkSystem:            checkSystem,
-		script:                 script,
+		hosts:                   hosts,
+		ipOption:                &ipOption,
+		clients:                 clients,
+		ctx:                     ctx,
+		domainMatcher:           domainMatcher,
+		matcherInfos:            matcherInfos,
+		disableFallback:         config.DisableFallback,
+		disableFallbackIfMatch:  config.DisableFallbackIfMatch,
+		enableParallelQuery:     config.EnableParallelQuery,
+		skipHostsWhenFakeEnable: config.SkipHostsWhenFakeEnable,
+		checkSystem:             checkSystem,
+		script:                  script,
 	}, nil
 }
 
@@ -251,6 +253,16 @@ func (s *DNS) MayUseSystemResolver() bool {
 	return false
 }
 
+// lookupStaticHosts resolves domain against the static hosts. For a FakeDNS query
+// (option.FakeEnable) it returns no match when skipHostsWhenFakeEnable is set, so the
+// query falls through to the name servers and the dns-proxy gets a fake IP, not a hosts entry.
+func (s *DNS) lookupStaticHosts(domain string, option dns.IPOption) ([]net.Address, error) {
+	if s.skipHostsWhenFakeEnable && option.FakeEnable {
+		return nil, nil
+	}
+	return s.hosts.Lookup(domain, option)
+}
+
 // LookupIP implements dns.Client.
 func (s *DNS) LookupIP(domain string, option dns.IPOption) ([]net.IP, uint32, error) {
 	// Normalize the FQDN form query
@@ -273,7 +285,7 @@ func (s *DNS) LookupIP(domain string, option dns.IPOption) ([]net.IP, uint32, er
 	}
 
 	// Static host lookup
-	switch addrs, err := s.hosts.Lookup(domain, option); {
+	switch addrs, err := s.lookupStaticHosts(domain, option); {
 	case err != nil:
 		if go_errors.Is(err, dns.ErrEmptyResponse) {
 			return nil, 0, dns.ErrEmptyResponse

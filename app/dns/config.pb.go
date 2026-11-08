@@ -267,8 +267,10 @@ type Config struct {
 	DisableFallbackIfMatch bool          `protobuf:"varint,11,opt,name=disableFallbackIfMatch,proto3" json:"disableFallbackIfMatch,omitempty"`
 	EnableParallelQuery    bool          `protobuf:"varint,14,opt,name=enableParallelQuery,proto3" json:"enableParallelQuery,omitempty"`
 	Script                 string        `protobuf:"bytes,15,opt,name=script,proto3" json:"script,omitempty"`
-	unknownFields          protoimpl.UnknownFields
-	sizeCache              protoimpl.SizeCache
+	// When true, FakeDNS queries (option.FakeEnable) skip the static hosts lookup. Default false.
+	SkipHostsWhenFakeEnable bool `protobuf:"varint,16,opt,name=skipHostsWhenFakeEnable,proto3" json:"skipHostsWhenFakeEnable,omitempty"`
+	unknownFields           protoimpl.UnknownFields
+	sizeCache               protoimpl.SizeCache
 }
 
 func (x *Config) Reset() {
@@ -385,6 +387,13 @@ func (x *Config) GetScript() string {
 	return ""
 }
 
+func (x *Config) GetSkipHostsWhenFakeEnable() bool {
+	if x != nil {
+		return x.SkipHostsWhenFakeEnable
+	}
+	return false
+}
+
 type Config_HostMapping struct {
 	state  protoimpl.MessageState `protogen:"open.v1"`
 	Domain *geodata.DomainRule    `protobuf:"bytes,2,opt,name=domain,proto3" json:"domain,omitempty"`
@@ -481,7 +490,7 @@ const file_app_dns_config_proto_rawDesc = "" +
 	"\x02id\x18\x12 \x01(\tR\x02idB\x0f\n" +
 	"\r_disableCacheB\r\n" +
 	"\v_serveStaleB\x12\n" +
-	"\x10_serveExpiredTTLJ\x04\b\x04\x10\x05\"\x9a\x05\n" +
+	"\x10_serveExpiredTTLJ\x04\b\x04\x10\x05\"\xd4\x05\n" +
 	"\x06Config\x129\n" +
 	"\vname_server\x18\x05 \x03(\v2\x18.xray.app.dns.NameServerR\n" +
 	"nameServer\x12\x1b\n" +
@@ -498,7 +507,8 @@ const file_app_dns_config_proto_rawDesc = "" +
 	" \x01(\bR\x0fdisableFallback\x126\n" +
 	"\x16disableFallbackIfMatch\x18\v \x01(\bR\x16disableFallbackIfMatch\x120\n" +
 	"\x13enableParallelQuery\x18\x0e \x01(\bR\x13enableParallelQuery\x12\x16\n" +
-	"\x06script\x18\x0f \x01(\tR\x06script\x1a}\n" +
+	"\x06script\x18\x0f \x01(\tR\x06script\x128\n" +
+	"\x17skipHostsWhenFakeEnable\x18\x10 \x01(\bR\x17skipHostsWhenFakeEnable\x1a}\n" +
 	"\vHostMapping\x127\n" +
 	"\x06domain\x18\x02 \x01(\v2\x1f.xray.common.geodata.DomainRuleR\x06domain\x12\x0e\n" +
 	"\x02ip\x18\x03 \x03(\fR\x02ip\x12%\n" +
