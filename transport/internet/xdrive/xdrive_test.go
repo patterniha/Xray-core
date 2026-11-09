@@ -69,6 +69,13 @@ func pairWith(t *testing.T, streamSettings *internet.MemoryStreamConfig) (client
 	}
 
 	return client, server, func() {
+		if config, err := streamConfig(streamSettings); err == nil {
+			box := spareBoxFor(config)
+			box.stop.Store(true)
+			for box.busy.Load() {
+				time.Sleep(10 * time.Millisecond)
+			}
+		}
 		client.Close()
 		server.Close()
 		listener.Close()
@@ -367,6 +374,10 @@ func TestStaleAnnounce(t *testing.T) {
 	}
 	if err := listener.storage.Put(ctx, uplinkPrefix("ghost")+"/000000000.seg", []byte("x")); err != nil {
 		t.Fatalf("Put: %v", err)
+	}
+	// The listener first saw this entry an hour ago on its own clock.
+	listener.firstSeen = map[string]time.Time{
+		strings.TrimPrefix(stale, sessionsDir+"/"): time.Now().Add(-time.Hour),
 	}
 
 	accepted, err := listener.acceptPending(ctx)
