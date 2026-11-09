@@ -181,6 +181,10 @@ func GeneraticUClient(c net.Conn, config *tls.Config) *utls.UConn {
 	return utls.UClient(c, copyConfig(config), utls.HelloChrome_Auto)
 }
 
+// globalUTLSSessionCache is the uTLS-native client session cache (utls.ClientSessionCache
+// is a distinct interface from crypto/tls's, so globalSessionCache cannot be reused here).
+var globalUTLSSessionCache = utls.NewLRUClientSessionCache(128)
+
 func copyConfig(c *tls.Config) *utls.Config {
 	config := &utls.Config{
 		Rand:                           c.Rand,
@@ -191,6 +195,10 @@ func copyConfig(c *tls.Config) *utls.Config {
 		KeyLogWriter:                   c.KeyLogWriter,
 		EncryptedClientHelloConfigList: c.EncryptedClientHelloConfigList,
 		NextProtos:                     c.NextProtos,
+		ClientSessionCache:             globalUTLSSessionCache,
+		SessionTicketsDisabled:         c.SessionTicketsDisabled,
+		AlwaysIncludePSK:               !c.SessionTicketsDisabled,
+		OmitEmptyPsk:                   true,
 	}
 	if c.GetClientCertificate != nil {
 		config.GetClientCertificate = func(info *utls.CertificateRequestInfo) (*utls.Certificate, error) {
