@@ -300,6 +300,90 @@ func (x *Noise) GetApplyTo() string {
 	return ""
 }
 
+type Close struct {
+	state              protoimpl.MessageState `protogen:"open.v1"`
+	TimeoutMs          int32                  `protobuf:"varint,1,opt,name=timeout_ms,json=timeoutMs,proto3" json:"timeout_ms,omitempty"`
+	CloseOnTimeout     bool                   `protobuf:"varint,2,opt,name=close_on_timeout,json=closeOnTimeout,proto3" json:"close_on_timeout,omitempty"`
+	CloseOnNonHttp     bool                   `protobuf:"varint,3,opt,name=close_on_non_http,json=closeOnNonHttp,proto3" json:"close_on_non_http,omitempty"`
+	RewriteHost        string                 `protobuf:"bytes,4,opt,name=rewrite_host,json=rewriteHost,proto3" json:"rewrite_host,omitempty"`
+	OriginalHostHeader string                 `protobuf:"bytes,5,opt,name=original_host_header,json=originalHostHeader,proto3" json:"original_host_header,omitempty"`
+	CloseOnNoHost      bool                   `protobuf:"varint,6,opt,name=close_on_no_host,json=closeOnNoHost,proto3" json:"close_on_no_host,omitempty"`
+	unknownFields      protoimpl.UnknownFields
+	sizeCache          protoimpl.SizeCache
+}
+
+func (x *Close) Reset() {
+	*x = Close{}
+	mi := &file_proxy_freedom_config_proto_msgTypes[3]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *Close) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*Close) ProtoMessage() {}
+
+func (x *Close) ProtoReflect() protoreflect.Message {
+	mi := &file_proxy_freedom_config_proto_msgTypes[3]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use Close.ProtoReflect.Descriptor instead.
+func (*Close) Descriptor() ([]byte, []int) {
+	return file_proxy_freedom_config_proto_rawDescGZIP(), []int{3}
+}
+
+func (x *Close) GetTimeoutMs() int32 {
+	if x != nil {
+		return x.TimeoutMs
+	}
+	return 0
+}
+
+func (x *Close) GetCloseOnTimeout() bool {
+	if x != nil {
+		return x.CloseOnTimeout
+	}
+	return false
+}
+
+func (x *Close) GetCloseOnNonHttp() bool {
+	if x != nil {
+		return x.CloseOnNonHttp
+	}
+	return false
+}
+
+func (x *Close) GetRewriteHost() string {
+	if x != nil {
+		return x.RewriteHost
+	}
+	return ""
+}
+
+func (x *Close) GetOriginalHostHeader() string {
+	if x != nil {
+		return x.OriginalHostHeader
+	}
+	return ""
+}
+
+func (x *Close) GetCloseOnNoHost() bool {
+	if x != nil {
+		return x.CloseOnNoHost
+	}
+	return false
+}
+
 type Range struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	Min           uint64                 `protobuf:"varint,1,opt,name=min,proto3" json:"min,omitempty"`
@@ -310,7 +394,7 @@ type Range struct {
 
 func (x *Range) Reset() {
 	*x = Range{}
-	mi := &file_proxy_freedom_config_proto_msgTypes[3]
+	mi := &file_proxy_freedom_config_proto_msgTypes[4]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -322,7 +406,7 @@ func (x *Range) String() string {
 func (*Range) ProtoMessage() {}
 
 func (x *Range) ProtoReflect() protoreflect.Message {
-	mi := &file_proxy_freedom_config_proto_msgTypes[3]
+	mi := &file_proxy_freedom_config_proto_msgTypes[4]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -335,7 +419,7 @@ func (x *Range) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use Range.ProtoReflect.Descriptor instead.
 func (*Range) Descriptor() ([]byte, []int) {
-	return file_proxy_freedom_config_proto_rawDescGZIP(), []int{3}
+	return file_proxy_freedom_config_proto_rawDescGZIP(), []int{4}
 }
 
 func (x *Range) GetMin() uint64 {
@@ -366,7 +450,7 @@ type FinalRuleConfig struct {
 
 func (x *FinalRuleConfig) Reset() {
 	*x = FinalRuleConfig{}
-	mi := &file_proxy_freedom_config_proto_msgTypes[4]
+	mi := &file_proxy_freedom_config_proto_msgTypes[5]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -378,7 +462,7 @@ func (x *FinalRuleConfig) String() string {
 func (*FinalRuleConfig) ProtoMessage() {}
 
 func (x *FinalRuleConfig) ProtoReflect() protoreflect.Message {
-	mi := &file_proxy_freedom_config_proto_msgTypes[4]
+	mi := &file_proxy_freedom_config_proto_msgTypes[5]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -391,7 +475,7 @@ func (x *FinalRuleConfig) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use FinalRuleConfig.ProtoReflect.Descriptor instead.
 func (*FinalRuleConfig) Descriptor() ([]byte, []int) {
-	return file_proxy_freedom_config_proto_rawDescGZIP(), []int{4}
+	return file_proxy_freedom_config_proto_rawDescGZIP(), []int{5}
 }
 
 func (x *FinalRuleConfig) GetAction() RuleAction {
@@ -445,13 +529,14 @@ type Config struct {
 	ProxyProtocol       uint32                  `protobuf:"varint,6,opt,name=proxy_protocol,json=proxyProtocol,proto3" json:"proxy_protocol,omitempty"`
 	Noises              []*Noise                `protobuf:"bytes,7,rep,name=noises,proto3" json:"noises,omitempty"`
 	FinalRules          []*FinalRuleConfig      `protobuf:"bytes,8,rep,name=final_rules,json=finalRules,proto3" json:"final_rules,omitempty"`
+	Close               *Close                  `protobuf:"bytes,9,opt,name=close,proto3" json:"close,omitempty"`
 	unknownFields       protoimpl.UnknownFields
 	sizeCache           protoimpl.SizeCache
 }
 
 func (x *Config) Reset() {
 	*x = Config{}
-	mi := &file_proxy_freedom_config_proto_msgTypes[5]
+	mi := &file_proxy_freedom_config_proto_msgTypes[6]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -463,7 +548,7 @@ func (x *Config) String() string {
 func (*Config) ProtoMessage() {}
 
 func (x *Config) ProtoReflect() protoreflect.Message {
-	mi := &file_proxy_freedom_config_proto_msgTypes[5]
+	mi := &file_proxy_freedom_config_proto_msgTypes[6]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -476,7 +561,7 @@ func (x *Config) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use Config.ProtoReflect.Descriptor instead.
 func (*Config) Descriptor() ([]byte, []int) {
-	return file_proxy_freedom_config_proto_rawDescGZIP(), []int{5}
+	return file_proxy_freedom_config_proto_rawDescGZIP(), []int{6}
 }
 
 func (x *Config) GetDomainStrategy() internet.DomainStrategy {
@@ -528,6 +613,13 @@ func (x *Config) GetFinalRules() []*FinalRuleConfig {
 	return nil
 }
 
+func (x *Config) GetClose() *Close {
+	if x != nil {
+		return x.Close
+	}
+	return nil
+}
+
 var File_proxy_freedom_config_proto protoreflect.FileDescriptor
 
 const file_proxy_freedom_config_proto_rawDesc = "" +
@@ -555,7 +647,15 @@ const file_proxy_freedom_config_proto_rawDesc = "" +
 	"\tdelay_min\x18\x03 \x01(\x04R\bdelayMin\x12\x1b\n" +
 	"\tdelay_max\x18\x04 \x01(\x04R\bdelayMax\x12\x16\n" +
 	"\x06packet\x18\x05 \x01(\fR\x06packet\x12\x19\n" +
-	"\bapply_to\x18\x06 \x01(\tR\aapplyTo\"+\n" +
+	"\bapply_to\x18\x06 \x01(\tR\aapplyTo\"\xf9\x01\n" +
+	"\x05Close\x12\x1d\n" +
+	"\n" +
+	"timeout_ms\x18\x01 \x01(\x05R\ttimeoutMs\x12(\n" +
+	"\x10close_on_timeout\x18\x02 \x01(\bR\x0ecloseOnTimeout\x12)\n" +
+	"\x11close_on_non_http\x18\x03 \x01(\bR\x0ecloseOnNonHttp\x12!\n" +
+	"\frewrite_host\x18\x04 \x01(\tR\vrewriteHost\x120\n" +
+	"\x14original_host_header\x18\x05 \x01(\tR\x12originalHostHeader\x12'\n" +
+	"\x10close_on_no_host\x18\x06 \x01(\bR\rcloseOnNoHost\"+\n" +
 	"\x05Range\x12\x10\n" +
 	"\x03min\x18\x01 \x01(\x04R\x03min\x12\x10\n" +
 	"\x03max\x18\x02 \x01(\x04R\x03max\"\xe0\x02\n" +
@@ -567,7 +667,7 @@ const file_proxy_freedom_config_proto_rawDesc = "" +
 	"\x05delay\x18\x05 \x01(\v2\x19.xray.proxy.freedom.RangeR\x05delay\x12;\n" +
 	"\tlog_level\x18\x06 \x01(\x0e2\x19.xray.common.log.SeverityH\x00R\blogLevel\x88\x01\x01B\f\n" +
 	"\n" +
-	"_log_level\"\xaf\x03\n" +
+	"_log_level\"\xe0\x03\n" +
 	"\x06Config\x12P\n" +
 	"\x0fdomain_strategy\x18\x01 \x01(\x0e2'.xray.transport.internet.DomainStrategyR\x0edomainStrategy\x12Z\n" +
 	"\x14destination_override\x18\x03 \x01(\v2'.xray.proxy.freedom.DestinationOverrideR\x13destinationOverride\x12\x1d\n" +
@@ -577,7 +677,8 @@ const file_proxy_freedom_config_proto_rawDesc = "" +
 	"\x0eproxy_protocol\x18\x06 \x01(\rR\rproxyProtocol\x121\n" +
 	"\x06noises\x18\a \x03(\v2\x19.xray.proxy.freedom.NoiseR\x06noises\x12D\n" +
 	"\vfinal_rules\x18\b \x03(\v2#.xray.proxy.freedom.FinalRuleConfigR\n" +
-	"finalRules*\"\n" +
+	"finalRules\x12/\n" +
+	"\x05close\x18\t \x01(\v2\x19.xray.proxy.freedom.CloseR\x05close*\"\n" +
 	"\n" +
 	"RuleAction\x12\t\n" +
 	"\x05Allow\x10\x00\x12\t\n" +
@@ -597,40 +698,42 @@ func file_proxy_freedom_config_proto_rawDescGZIP() []byte {
 }
 
 var file_proxy_freedom_config_proto_enumTypes = make([]protoimpl.EnumInfo, 1)
-var file_proxy_freedom_config_proto_msgTypes = make([]protoimpl.MessageInfo, 6)
+var file_proxy_freedom_config_proto_msgTypes = make([]protoimpl.MessageInfo, 7)
 var file_proxy_freedom_config_proto_goTypes = []any{
 	(RuleAction)(0),                 // 0: xray.proxy.freedom.RuleAction
 	(*DestinationOverride)(nil),     // 1: xray.proxy.freedom.DestinationOverride
 	(*Fragment)(nil),                // 2: xray.proxy.freedom.Fragment
 	(*Noise)(nil),                   // 3: xray.proxy.freedom.Noise
-	(*Range)(nil),                   // 4: xray.proxy.freedom.Range
-	(*FinalRuleConfig)(nil),         // 5: xray.proxy.freedom.FinalRuleConfig
-	(*Config)(nil),                  // 6: xray.proxy.freedom.Config
-	(*protocol.ServerEndpoint)(nil), // 7: xray.common.protocol.ServerEndpoint
-	(net.Network)(0),                // 8: xray.common.net.Network
-	(*net.PortList)(nil),            // 9: xray.common.net.PortList
-	(*geodata.IPRule)(nil),          // 10: xray.common.geodata.IPRule
-	(log.Severity)(0),               // 11: xray.common.log.Severity
-	(internet.DomainStrategy)(0),    // 12: xray.transport.internet.DomainStrategy
+	(*Close)(nil),                   // 4: xray.proxy.freedom.Close
+	(*Range)(nil),                   // 5: xray.proxy.freedom.Range
+	(*FinalRuleConfig)(nil),         // 6: xray.proxy.freedom.FinalRuleConfig
+	(*Config)(nil),                  // 7: xray.proxy.freedom.Config
+	(*protocol.ServerEndpoint)(nil), // 8: xray.common.protocol.ServerEndpoint
+	(net.Network)(0),                // 9: xray.common.net.Network
+	(*net.PortList)(nil),            // 10: xray.common.net.PortList
+	(*geodata.IPRule)(nil),          // 11: xray.common.geodata.IPRule
+	(log.Severity)(0),               // 12: xray.common.log.Severity
+	(internet.DomainStrategy)(0),    // 13: xray.transport.internet.DomainStrategy
 }
 var file_proxy_freedom_config_proto_depIdxs = []int32{
-	7,  // 0: xray.proxy.freedom.DestinationOverride.server:type_name -> xray.common.protocol.ServerEndpoint
+	8,  // 0: xray.proxy.freedom.DestinationOverride.server:type_name -> xray.common.protocol.ServerEndpoint
 	0,  // 1: xray.proxy.freedom.FinalRuleConfig.action:type_name -> xray.proxy.freedom.RuleAction
-	8,  // 2: xray.proxy.freedom.FinalRuleConfig.networks:type_name -> xray.common.net.Network
-	9,  // 3: xray.proxy.freedom.FinalRuleConfig.port_list:type_name -> xray.common.net.PortList
-	10, // 4: xray.proxy.freedom.FinalRuleConfig.ip:type_name -> xray.common.geodata.IPRule
-	4,  // 5: xray.proxy.freedom.FinalRuleConfig.delay:type_name -> xray.proxy.freedom.Range
-	11, // 6: xray.proxy.freedom.FinalRuleConfig.log_level:type_name -> xray.common.log.Severity
-	12, // 7: xray.proxy.freedom.Config.domain_strategy:type_name -> xray.transport.internet.DomainStrategy
+	9,  // 2: xray.proxy.freedom.FinalRuleConfig.networks:type_name -> xray.common.net.Network
+	10, // 3: xray.proxy.freedom.FinalRuleConfig.port_list:type_name -> xray.common.net.PortList
+	11, // 4: xray.proxy.freedom.FinalRuleConfig.ip:type_name -> xray.common.geodata.IPRule
+	5,  // 5: xray.proxy.freedom.FinalRuleConfig.delay:type_name -> xray.proxy.freedom.Range
+	12, // 6: xray.proxy.freedom.FinalRuleConfig.log_level:type_name -> xray.common.log.Severity
+	13, // 7: xray.proxy.freedom.Config.domain_strategy:type_name -> xray.transport.internet.DomainStrategy
 	1,  // 8: xray.proxy.freedom.Config.destination_override:type_name -> xray.proxy.freedom.DestinationOverride
 	2,  // 9: xray.proxy.freedom.Config.fragment:type_name -> xray.proxy.freedom.Fragment
 	3,  // 10: xray.proxy.freedom.Config.noises:type_name -> xray.proxy.freedom.Noise
-	5,  // 11: xray.proxy.freedom.Config.final_rules:type_name -> xray.proxy.freedom.FinalRuleConfig
-	12, // [12:12] is the sub-list for method output_type
-	12, // [12:12] is the sub-list for method input_type
-	12, // [12:12] is the sub-list for extension type_name
-	12, // [12:12] is the sub-list for extension extendee
-	0,  // [0:12] is the sub-list for field type_name
+	6,  // 11: xray.proxy.freedom.Config.final_rules:type_name -> xray.proxy.freedom.FinalRuleConfig
+	4,  // 12: xray.proxy.freedom.Config.close:type_name -> xray.proxy.freedom.Close
+	13, // [13:13] is the sub-list for method output_type
+	13, // [13:13] is the sub-list for method input_type
+	13, // [13:13] is the sub-list for extension type_name
+	13, // [13:13] is the sub-list for extension extendee
+	0,  // [0:13] is the sub-list for field type_name
 }
 
 func init() { file_proxy_freedom_config_proto_init() }
@@ -638,14 +741,14 @@ func file_proxy_freedom_config_proto_init() {
 	if File_proxy_freedom_config_proto != nil {
 		return
 	}
-	file_proxy_freedom_config_proto_msgTypes[4].OneofWrappers = []any{}
+	file_proxy_freedom_config_proto_msgTypes[5].OneofWrappers = []any{}
 	type x struct{}
 	out := protoimpl.TypeBuilder{
 		File: protoimpl.DescBuilder{
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_proxy_freedom_config_proto_rawDesc), len(file_proxy_freedom_config_proto_rawDesc)),
 			NumEnums:      1,
-			NumMessages:   6,
+			NumMessages:   7,
 			NumExtensions: 0,
 			NumServices:   0,
 		},

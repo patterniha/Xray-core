@@ -419,16 +419,22 @@ func (h *Handler) Process(ctx context.Context, link *transport.Link, dialer inte
 
 		var writer buf.Writer
 		if destination.Network == net.Network_TCP {
+			var tcpWriter io.Writer = conn
 			if h.config.Fragment != nil {
 				errors.LogDebug(ctx, "FRAGMENT", h.config.Fragment.PacketsFrom, h.config.Fragment.PacketsTo, h.config.Fragment.LengthMin, h.config.Fragment.LengthMax,
 					h.config.Fragment.IntervalMin, h.config.Fragment.IntervalMax, h.config.Fragment.MaxSplitMin, h.config.Fragment.MaxSplitMax)
-				writer = buf.NewWriter(&FragmentWriter{
+				tcpWriter = &FragmentWriter{
 					fragment: h.config.Fragment,
 					writer:   conn,
-				})
-			} else {
-				writer = buf.NewWriter(conn)
+				}
 			}
+			// "close" rewrites the first HTTP/1.1 request (Connection: close + optional Host
+			// rewrite). It wraps the write path above TLS, so it sees the plaintext request.
+			if h.config.Close != nil {
+				errors.LogDebug(ctx, "CLOSE", h.config.Close.TimeoutMs, h.config.Close.CloseOnTimeout, h.config.Close.CloseOnNonHttp, h.config.Close.CloseOnNoHost, h.config.Close.RewriteHost, h.config.Close.OriginalHostHeader)
+				tcpWriter = NewCloseWriter(tcpWriter, conn, h.config.Close)
+			}
+			writer = buf.NewWriter(tcpWriter)
 		} else {
 			writer = NewPacketWriter(conn, h, defaultRule, UDPOverride, destination, outGateway)
 			if h.config.Noises != nil {

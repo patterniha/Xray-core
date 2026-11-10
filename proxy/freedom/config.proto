@@ -37,6 +37,15 @@ message Noise {
   string apply_to = 6;
 }
 
+message Close {
+  int32 timeout_ms = 1;
+  bool close_on_timeout = 2;
+  bool close_on_non_http = 3;
+  string rewrite_host = 4;
+  string original_host_header = 5;
+  bool close_on_no_host = 6;
+}
+
 message Range {
   uint64 min = 1;
   uint64 max = 2;
@@ -64,4 +73,5 @@ message Config {
   uint32 proxy_protocol = 6;
   repeated Noise noises = 7;
   repeated FinalRuleConfig final_rules = 8;
+  Close close = 9;
 }

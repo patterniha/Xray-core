@@ -28,6 +28,7 @@ type FreedomConfig struct {
 	ProxyProtocol  uint32                    `json:"proxyProtocol"`
 	IPsBlocked     *StringList               `json:"ipsBlocked"`
 	FinalRules     []*FreedomFinalRuleConfig `json:"finalRules"`
+	Close          *FreedomClose             `json:"close"`
 }
 
 type Fragment struct {
@@ -195,7 +196,65 @@ func (c *FreedomConfig) Build() (proto.Message, error) {
 		config.FinalRules = append(config.FinalRules, rule)
 	}
 
+	if c.Close != nil {
+		closeConfig, err := c.Close.Build()
+		if err != nil {
+			return nil, err
+		}
+		config.Close = closeConfig
+	}
+
 	return config, nil
+}
+
+type FreedomClose struct {
+	TimeoutMs          int32  `json:"timeoutMs"`
+	OnTimeout          string `json:"onTimeout"`
+	NonHTTP            string `json:"nonHTTP"`
+	NoHost             string `json:"noHost"`
+	RewriteHost        string `json:"rewriteHost"`
+	OriginalHostHeader string `json:"originalHostHeader"`
+}
+
+func (c *FreedomClose) Build() (*freedom.Close, error) {
+	closeOnTimeout, err := parseFreedomCloseAction(c.OnTimeout, "onTimeout")
+	if err != nil {
+		return nil, err
+	}
+	closeOnNonHTTP, err := parseFreedomCloseAction(c.NonHTTP, "nonHTTP")
+	if err != nil {
+		return nil, err
+	}
+	closeOnNoHost, err := parseFreedomCloseAction(c.NoHost, "noHost")
+	if err != nil {
+		return nil, err
+	}
+	if strings.ContainsAny(c.RewriteHost, "\r\n") {
+		return nil, errors.New(`"rewriteHost" must not contain CR or LF`)
+	}
+	if c.OriginalHostHeader != "" && strings.ContainsAny(c.OriginalHostHeader, "\r\n: \t") {
+		return nil, errors.New(`"originalHostHeader" must be a header name (no CR, LF, colon, space or tab)`)
+	}
+	return &freedom.Close{
+		TimeoutMs:          c.TimeoutMs,
+		CloseOnTimeout:     closeOnTimeout,
+		CloseOnNonHttp:     closeOnNonHTTP,
+		CloseOnNoHost:      closeOnNoHost,
+		RewriteHost:        c.RewriteHost,
+		OriginalHostHeader: c.OriginalHostHeader,
+	}, nil
+}
+
+// parseFreedomCloseAction maps the "close"/"pass" strings (default "pass") to the proto bool.
+func parseFreedomCloseAction(s, name string) (bool, error) {
+	switch strings.ToLower(s) {
+	case "", "pass":
+		return false, nil
+	case "close":
+		return true, nil
+	default:
+		return false, errors.New("invalid ", name, `: want "close" or "pass"`)
+	}
 }
 
 func ParseNoise(noise *Noise) (*freedom.Noise, error) {
