@@ -214,7 +214,11 @@ type FreedomClose struct {
 	NoHost             string            `json:"noHost"`
 	RewriteHost        string            `json:"rewriteHost"`
 	OriginalHostHeader string            `json:"originalHostHeader"`
-	Headers            map[string]string `json:"headers"`
+	AppendHeaders      map[string]string `json:"appendHeaders"`
+	SetHeaders         map[string]string `json:"setHeaders"`
+	OverrideHeaders    map[string]string `json:"overrideHeaders"`
+	AddHeaders         map[string]string `json:"addHeaders"`
+	RemoveHeaders      []string          `json:"removeHeaders"`
 }
 
 func (c *FreedomClose) Build() (*freedom.Close, error) {
@@ -236,12 +240,22 @@ func (c *FreedomClose) Build() (*freedom.Close, error) {
 	if c.OriginalHostHeader != "" && strings.ContainsAny(c.OriginalHostHeader, "\r\n: \t") {
 		return nil, errors.New(`"originalHostHeader" must be a header name (no CR, LF, colon, space or tab)`)
 	}
-	for name, value := range c.Headers {
-		if name == "" || strings.ContainsAny(name, "\r\n: \t") {
-			return nil, errors.New(`"close.headers" has an invalid header name: `, name)
+	for _, h := range []struct {
+		field string
+		m     map[string]string
+	}{
+		{"appendHeaders", c.AppendHeaders},
+		{"setHeaders", c.SetHeaders},
+		{"overrideHeaders", c.OverrideHeaders},
+		{"addHeaders", c.AddHeaders},
+	} {
+		if err := validateCloseHeaderMap(h.field, h.m); err != nil {
+			return nil, err
 		}
-		if strings.ContainsAny(value, "\r\n") {
-			return nil, errors.New(`"close.headers" value for "`, name, `" must not contain CR or LF`)
+	}
+	for _, name := range c.RemoveHeaders {
+		if name == "" || strings.ContainsAny(name, "\r\n: \t") {
+			return nil, errors.New(`"close.removeHeaders" has an invalid header name: `, name)
 		}
 	}
 	return &freedom.Close{
@@ -251,8 +265,26 @@ func (c *FreedomClose) Build() (*freedom.Close, error) {
 		CloseOnNoHost:      closeOnNoHost,
 		RewriteHost:        c.RewriteHost,
 		OriginalHostHeader: c.OriginalHostHeader,
-		Headers:            c.Headers,
+		AppendHeaders:      c.AppendHeaders,
+		SetHeaders:         c.SetHeaders,
+		OverrideHeaders:    c.OverrideHeaders,
+		AddHeaders:         c.AddHeaders,
+		RemoveHeaders:      c.RemoveHeaders,
 	}, nil
+}
+
+// validateCloseHeaderMap rejects header names/values that could inject extra headers (CR/LF) or
+// are not valid header names (empty, or containing ":"/space/tab).
+func validateCloseHeaderMap(field string, m map[string]string) error {
+	for name, value := range m {
+		if name == "" || strings.ContainsAny(name, "\r\n: \t") {
+			return errors.New(`"close.`, field, `" has an invalid header name: `, name)
+		}
+		if strings.ContainsAny(value, "\r\n") {
+			return errors.New(`"close.`, field, `" value for "`, name, `" must not contain CR or LF`)
+		}
+	}
+	return nil
 }
 
 // parseFreedomCloseAction maps the "close"/"pass" strings (default "pass") to the proto bool.

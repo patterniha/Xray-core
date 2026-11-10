@@ -308,7 +308,11 @@ type Close struct {
 	RewriteHost        string                 `protobuf:"bytes,4,opt,name=rewrite_host,json=rewriteHost,proto3" json:"rewrite_host,omitempty"`
 	OriginalHostHeader string                 `protobuf:"bytes,5,opt,name=original_host_header,json=originalHostHeader,proto3" json:"original_host_header,omitempty"`
 	CloseOnNoHost      bool                   `protobuf:"varint,6,opt,name=close_on_no_host,json=closeOnNoHost,proto3" json:"close_on_no_host,omitempty"`
-	Headers            map[string]string      `protobuf:"bytes,7,rep,name=headers,proto3" json:"headers,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"bytes,2,opt,name=value"`
+	AppendHeaders      map[string]string      `protobuf:"bytes,7,rep,name=append_headers,json=appendHeaders,proto3" json:"append_headers,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"bytes,2,opt,name=value"`
+	SetHeaders         map[string]string      `protobuf:"bytes,8,rep,name=set_headers,json=setHeaders,proto3" json:"set_headers,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"bytes,2,opt,name=value"`
+	AddHeaders         map[string]string      `protobuf:"bytes,9,rep,name=add_headers,json=addHeaders,proto3" json:"add_headers,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"bytes,2,opt,name=value"`
+	RemoveHeaders      []string               `protobuf:"bytes,10,rep,name=remove_headers,json=removeHeaders,proto3" json:"remove_headers,omitempty"`
+	OverrideHeaders    map[string]string      `protobuf:"bytes,11,rep,name=override_headers,json=overrideHeaders,proto3" json:"override_headers,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"bytes,2,opt,name=value"`
 	unknownFields      protoimpl.UnknownFields
 	sizeCache          protoimpl.SizeCache
 }
@@ -385,9 +389,37 @@ func (x *Close) GetCloseOnNoHost() bool {
 	return false
 }
 
-func (x *Close) GetHeaders() map[string]string {
+func (x *Close) GetAppendHeaders() map[string]string {
 	if x != nil {
-		return x.Headers
+		return x.AppendHeaders
+	}
+	return nil
+}
+
+func (x *Close) GetSetHeaders() map[string]string {
+	if x != nil {
+		return x.SetHeaders
+	}
+	return nil
+}
+
+func (x *Close) GetAddHeaders() map[string]string {
+	if x != nil {
+		return x.AddHeaders
+	}
+	return nil
+}
+
+func (x *Close) GetRemoveHeaders() []string {
+	if x != nil {
+		return x.RemoveHeaders
+	}
+	return nil
+}
+
+func (x *Close) GetOverrideHeaders() map[string]string {
+	if x != nil {
+		return x.OverrideHeaders
 	}
 	return nil
 }
@@ -655,7 +687,7 @@ const file_proxy_freedom_config_proto_rawDesc = "" +
 	"\tdelay_min\x18\x03 \x01(\x04R\bdelayMin\x12\x1b\n" +
 	"\tdelay_max\x18\x04 \x01(\x04R\bdelayMax\x12\x16\n" +
 	"\x06packet\x18\x05 \x01(\fR\x06packet\x12\x19\n" +
-	"\bapply_to\x18\x06 \x01(\tR\aapplyTo\"\xf7\x02\n" +
+	"\bapply_to\x18\x06 \x01(\tR\aapplyTo\"\xec\x06\n" +
 	"\x05Close\x12\x1d\n" +
 	"\n" +
 	"timeout_ms\x18\x01 \x01(\x05R\ttimeoutMs\x12(\n" +
@@ -663,9 +695,25 @@ const file_proxy_freedom_config_proto_rawDesc = "" +
 	"\x11close_on_non_http\x18\x03 \x01(\bR\x0ecloseOnNonHttp\x12!\n" +
 	"\frewrite_host\x18\x04 \x01(\tR\vrewriteHost\x120\n" +
 	"\x14original_host_header\x18\x05 \x01(\tR\x12originalHostHeader\x12'\n" +
-	"\x10close_on_no_host\x18\x06 \x01(\bR\rcloseOnNoHost\x12@\n" +
-	"\aheaders\x18\a \x03(\v2&.xray.proxy.freedom.Close.HeadersEntryR\aheaders\x1a:\n" +
-	"\fHeadersEntry\x12\x10\n" +
+	"\x10close_on_no_host\x18\x06 \x01(\bR\rcloseOnNoHost\x12S\n" +
+	"\x0eappend_headers\x18\a \x03(\v2,.xray.proxy.freedom.Close.AppendHeadersEntryR\rappendHeaders\x12J\n" +
+	"\vset_headers\x18\b \x03(\v2).xray.proxy.freedom.Close.SetHeadersEntryR\n" +
+	"setHeaders\x12J\n" +
+	"\vadd_headers\x18\t \x03(\v2).xray.proxy.freedom.Close.AddHeadersEntryR\n" +
+	"addHeaders\x12%\n" +
+	"\x0eremove_headers\x18\n" +
+	" \x03(\tR\rremoveHeaders\x12Y\n" +
+	"\x10override_headers\x18\v \x03(\v2..xray.proxy.freedom.Close.OverrideHeadersEntryR\x0foverrideHeaders\x1a@\n" +
+	"\x12AppendHeadersEntry\x12\x10\n" +
+	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
+	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01\x1a=\n" +
+	"\x0fSetHeadersEntry\x12\x10\n" +
+	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
+	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01\x1a=\n" +
+	"\x0fAddHeadersEntry\x12\x10\n" +
+	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
+	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01\x1aB\n" +
+	"\x14OverrideHeadersEntry\x12\x10\n" +
 	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
 	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01\"+\n" +
 	"\x05Range\x12\x10\n" +
@@ -710,7 +758,7 @@ func file_proxy_freedom_config_proto_rawDescGZIP() []byte {
 }
 
 var file_proxy_freedom_config_proto_enumTypes = make([]protoimpl.EnumInfo, 1)
-var file_proxy_freedom_config_proto_msgTypes = make([]protoimpl.MessageInfo, 8)
+var file_proxy_freedom_config_proto_msgTypes = make([]protoimpl.MessageInfo, 11)
 var file_proxy_freedom_config_proto_goTypes = []any{
 	(RuleAction)(0),                 // 0: xray.proxy.freedom.RuleAction
 	(*DestinationOverride)(nil),     // 1: xray.proxy.freedom.DestinationOverride
@@ -720,34 +768,40 @@ var file_proxy_freedom_config_proto_goTypes = []any{
 	(*Range)(nil),                   // 5: xray.proxy.freedom.Range
 	(*FinalRuleConfig)(nil),         // 6: xray.proxy.freedom.FinalRuleConfig
 	(*Config)(nil),                  // 7: xray.proxy.freedom.Config
-	nil,                             // 8: xray.proxy.freedom.Close.HeadersEntry
-	(*protocol.ServerEndpoint)(nil), // 9: xray.common.protocol.ServerEndpoint
-	(net.Network)(0),                // 10: xray.common.net.Network
-	(*net.PortList)(nil),            // 11: xray.common.net.PortList
-	(*geodata.IPRule)(nil),          // 12: xray.common.geodata.IPRule
-	(log.Severity)(0),               // 13: xray.common.log.Severity
-	(internet.DomainStrategy)(0),    // 14: xray.transport.internet.DomainStrategy
+	nil,                             // 8: xray.proxy.freedom.Close.AppendHeadersEntry
+	nil,                             // 9: xray.proxy.freedom.Close.SetHeadersEntry
+	nil,                             // 10: xray.proxy.freedom.Close.AddHeadersEntry
+	nil,                             // 11: xray.proxy.freedom.Close.OverrideHeadersEntry
+	(*protocol.ServerEndpoint)(nil), // 12: xray.common.protocol.ServerEndpoint
+	(net.Network)(0),                // 13: xray.common.net.Network
+	(*net.PortList)(nil),            // 14: xray.common.net.PortList
+	(*geodata.IPRule)(nil),          // 15: xray.common.geodata.IPRule
+	(log.Severity)(0),               // 16: xray.common.log.Severity
+	(internet.DomainStrategy)(0),    // 17: xray.transport.internet.DomainStrategy
 }
 var file_proxy_freedom_config_proto_depIdxs = []int32{
-	9,  // 0: xray.proxy.freedom.DestinationOverride.server:type_name -> xray.common.protocol.ServerEndpoint
-	8,  // 1: xray.proxy.freedom.Close.headers:type_name -> xray.proxy.freedom.Close.HeadersEntry
-	0,  // 2: xray.proxy.freedom.FinalRuleConfig.action:type_name -> xray.proxy.freedom.RuleAction
-	10, // 3: xray.proxy.freedom.FinalRuleConfig.networks:type_name -> xray.common.net.Network
-	11, // 4: xray.proxy.freedom.FinalRuleConfig.port_list:type_name -> xray.common.net.PortList
-	12, // 5: xray.proxy.freedom.FinalRuleConfig.ip:type_name -> xray.common.geodata.IPRule
-	5,  // 6: xray.proxy.freedom.FinalRuleConfig.delay:type_name -> xray.proxy.freedom.Range
-	13, // 7: xray.proxy.freedom.FinalRuleConfig.log_level:type_name -> xray.common.log.Severity
-	14, // 8: xray.proxy.freedom.Config.domain_strategy:type_name -> xray.transport.internet.DomainStrategy
-	1,  // 9: xray.proxy.freedom.Config.destination_override:type_name -> xray.proxy.freedom.DestinationOverride
-	2,  // 10: xray.proxy.freedom.Config.fragment:type_name -> xray.proxy.freedom.Fragment
-	3,  // 11: xray.proxy.freedom.Config.noises:type_name -> xray.proxy.freedom.Noise
-	6,  // 12: xray.proxy.freedom.Config.final_rules:type_name -> xray.proxy.freedom.FinalRuleConfig
-	4,  // 13: xray.proxy.freedom.Config.close:type_name -> xray.proxy.freedom.Close
-	14, // [14:14] is the sub-list for method output_type
-	14, // [14:14] is the sub-list for method input_type
-	14, // [14:14] is the sub-list for extension type_name
-	14, // [14:14] is the sub-list for extension extendee
-	0,  // [0:14] is the sub-list for field type_name
+	12, // 0: xray.proxy.freedom.DestinationOverride.server:type_name -> xray.common.protocol.ServerEndpoint
+	8,  // 1: xray.proxy.freedom.Close.append_headers:type_name -> xray.proxy.freedom.Close.AppendHeadersEntry
+	9,  // 2: xray.proxy.freedom.Close.set_headers:type_name -> xray.proxy.freedom.Close.SetHeadersEntry
+	10, // 3: xray.proxy.freedom.Close.add_headers:type_name -> xray.proxy.freedom.Close.AddHeadersEntry
+	11, // 4: xray.proxy.freedom.Close.override_headers:type_name -> xray.proxy.freedom.Close.OverrideHeadersEntry
+	0,  // 5: xray.proxy.freedom.FinalRuleConfig.action:type_name -> xray.proxy.freedom.RuleAction
+	13, // 6: xray.proxy.freedom.FinalRuleConfig.networks:type_name -> xray.common.net.Network
+	14, // 7: xray.proxy.freedom.FinalRuleConfig.port_list:type_name -> xray.common.net.PortList
+	15, // 8: xray.proxy.freedom.FinalRuleConfig.ip:type_name -> xray.common.geodata.IPRule
+	5,  // 9: xray.proxy.freedom.FinalRuleConfig.delay:type_name -> xray.proxy.freedom.Range
+	16, // 10: xray.proxy.freedom.FinalRuleConfig.log_level:type_name -> xray.common.log.Severity
+	17, // 11: xray.proxy.freedom.Config.domain_strategy:type_name -> xray.transport.internet.DomainStrategy
+	1,  // 12: xray.proxy.freedom.Config.destination_override:type_name -> xray.proxy.freedom.DestinationOverride
+	2,  // 13: xray.proxy.freedom.Config.fragment:type_name -> xray.proxy.freedom.Fragment
+	3,  // 14: xray.proxy.freedom.Config.noises:type_name -> xray.proxy.freedom.Noise
+	6,  // 15: xray.proxy.freedom.Config.final_rules:type_name -> xray.proxy.freedom.FinalRuleConfig
+	4,  // 16: xray.proxy.freedom.Config.close:type_name -> xray.proxy.freedom.Close
+	17, // [17:17] is the sub-list for method output_type
+	17, // [17:17] is the sub-list for method input_type
+	17, // [17:17] is the sub-list for extension type_name
+	17, // [17:17] is the sub-list for extension extendee
+	0,  // [0:17] is the sub-list for field type_name
 }
 
 func init() { file_proxy_freedom_config_proto_init() }
@@ -762,7 +816,7 @@ func file_proxy_freedom_config_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_proxy_freedom_config_proto_rawDesc), len(file_proxy_freedom_config_proto_rawDesc)),
 			NumEnums:      1,
-			NumMessages:   8,
+			NumMessages:   11,
 			NumExtensions: 0,
 			NumServices:   0,
 		},
