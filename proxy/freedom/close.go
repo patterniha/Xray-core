@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"errors"
 	"io"
+	"sort"
 	"sync"
 	"time"
 )
@@ -56,6 +57,7 @@ type CloseWriter struct {
 	closeOnNoHost      bool
 	rewriteHost        string
 	originalHostHeader string
+	headers            [][2]string // extra request headers to add, pre-sorted by name
 
 	mu    sync.Mutex
 	done  bool // first-request decision made; Write now passes through
@@ -71,6 +73,20 @@ func NewCloseWriter(writer io.Writer, closer io.Closer, config *Close) *CloseWri
 	if timeoutMs <= 0 {
 		timeoutMs = closeDefaultTimeoutMs
 	}
+	// Pre-sort the extra headers by name so the rewritten request is deterministic (Go maps
+	// iterate in random order); this mirrors how net/http serializes a header map.
+	var headers [][2]string
+	if len(config.Headers) > 0 {
+		keys := make([]string, 0, len(config.Headers))
+		for k := range config.Headers {
+			keys = append(keys, k)
+		}
+		sort.Strings(keys)
+		headers = make([][2]string, 0, len(keys))
+		for _, k := range keys {
+			headers = append(headers, [2]string{k, config.Headers[k]})
+		}
+	}
 	return &CloseWriter{
 		writer:             writer,
 		closer:             closer,
@@ -80,6 +96,7 @@ func NewCloseWriter(writer io.Writer, closer io.Closer, config *Close) *CloseWri
 		closeOnNoHost:      config.CloseOnNoHost,
 		rewriteHost:        config.RewriteHost,
 		originalHostHeader: config.OriginalHostHeader,
+		headers:            headers,
 	}
 }
 
@@ -114,7 +131,7 @@ func (c *CloseWriter) Write(p []byte) (int, error) {
 		return c.flushLocked(c.buf, len(p))
 	case bytes.Contains(c.buf, closeHeaderEnd):
 		// Whole request head is here: apply the rewrites (no-op where they don't apply).
-		out, shouldClose := closeRewriteFirstRequest(c.buf, c.rewriteHost, c.originalHostHeader, c.closeOnNoHost)
+		out, shouldClose := closeRewriteFirstRequest(c.buf, c.rewriteHost, c.originalHostHeader, c.closeOnNoHost, c.headers)
 		if shouldClose {
 			return 0, c.abortLocked()
 		}
@@ -212,12 +229,14 @@ func closeLooksLikeHTTPRequest(buf []byte) bool {
 //   - Connection: close: drop existing Connection/Keep-Alive/Proxy-Connection and append
 //     "Connection: close" — EXCEPT on WebSocket/upgrade/SSE requests, which keep their headers
 //     untouched.
+//   - Extra headers: append each configured "name: value" (added, not replacing an existing
+//     header of the same name), sorted by name, whenever the request is rewritten.
 //
 // It returns shouldClose=true (with raw) when the request has no Host header and closeOnNoHost is
 // set, telling the caller to tear the connection down. CONNECT and responses are returned
 // unchanged. Rules mirror MITM-DomainFronting/request-splitter (add_connection_close), request
 // direction only.
-func closeRewriteFirstRequest(raw []byte, rewriteHost, originalHostHeader string, closeOnNoHost bool) (out []byte, shouldClose bool) {
+func closeRewriteFirstRequest(raw []byte, rewriteHost, originalHostHeader string, closeOnNoHost bool, extraHeaders [][2]string) (out []byte, shouldClose bool) {
 	idx := bytes.Index(raw, closeHeaderEnd)
 	if idx == -1 {
 		return raw, false // no complete header block
@@ -273,11 +292,15 @@ func closeRewriteFirstRequest(raw []byte, rewriteHost, originalHostHeader string
 	}
 
 	doHost := rewriteHost != "" || originalHostHeader != ""
-	if !addClose && !doHost {
+	if !addClose && !doHost && len(extraHeaders) == 0 {
 		return raw, false // nothing to change
 	}
 
-	out = make([]byte, 0, len(raw)+len(rewriteHost)+len(originalHostHeader)+len("Connection: close")+3*len(closeCRLF))
+	extraLen := 0
+	for _, h := range extraHeaders {
+		extraLen += len(h[0]) + len(": ") + len(h[1]) + len(closeCRLF)
+	}
+	out = make([]byte, 0, len(raw)+len(rewriteHost)+len(originalHostHeader)+len("Connection: close")+3*len(closeCRLF)+extraLen)
 	out = append(out, lines[0]...)
 	for _, line := range lines[1:] {
 		lower := bytes.ToLower(line)
@@ -309,6 +332,12 @@ func closeRewriteFirstRequest(raw []byte, rewriteHost, originalHostHeader string
 		}
 		out = append(out, closeCRLF...)
 		out = append(out, line...)
+	}
+	for _, h := range extraHeaders {
+		out = append(out, closeCRLF...)
+		out = append(out, h[0]...)
+		out = append(out, ':', ' ')
+		out = append(out, h[1]...)
 	}
 	if addClose {
 		out = append(out, closeCRLF...)

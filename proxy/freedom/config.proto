@@ -44,6 +44,7 @@ message Close {
   string rewrite_host = 4;
   string original_host_header = 5;
   bool close_on_no_host = 6;
+  map<string, string> headers = 7;
 }
 
 message Range {

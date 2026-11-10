@@ -208,12 +208,13 @@ func (c *FreedomConfig) Build() (proto.Message, error) {
 }
 
 type FreedomClose struct {
-	TimeoutMs          int32  `json:"timeoutMs"`
-	OnTimeout          string `json:"onTimeout"`
-	NonHTTP            string `json:"nonHTTP"`
-	NoHost             string `json:"noHost"`
-	RewriteHost        string `json:"rewriteHost"`
-	OriginalHostHeader string `json:"originalHostHeader"`
+	TimeoutMs          int32             `json:"timeoutMs"`
+	OnTimeout          string            `json:"onTimeout"`
+	NonHTTP            string            `json:"nonHTTP"`
+	NoHost             string            `json:"noHost"`
+	RewriteHost        string            `json:"rewriteHost"`
+	OriginalHostHeader string            `json:"originalHostHeader"`
+	Headers            map[string]string `json:"headers"`
 }
 
 func (c *FreedomClose) Build() (*freedom.Close, error) {
@@ -235,6 +236,14 @@ func (c *FreedomClose) Build() (*freedom.Close, error) {
 	if c.OriginalHostHeader != "" && strings.ContainsAny(c.OriginalHostHeader, "\r\n: \t") {
 		return nil, errors.New(`"originalHostHeader" must be a header name (no CR, LF, colon, space or tab)`)
 	}
+	for name, value := range c.Headers {
+		if name == "" || strings.ContainsAny(name, "\r\n: \t") {
+			return nil, errors.New(`"close.headers" has an invalid header name: `, name)
+		}
+		if strings.ContainsAny(value, "\r\n") {
+			return nil, errors.New(`"close.headers" value for "`, name, `" must not contain CR or LF`)
+		}
+	}
 	return &freedom.Close{
 		TimeoutMs:          c.TimeoutMs,
 		CloseOnTimeout:     closeOnTimeout,
@@ -242,6 +251,7 @@ func (c *FreedomClose) Build() (*freedom.Close, error) {
 		CloseOnNoHost:      closeOnNoHost,
 		RewriteHost:        c.RewriteHost,
 		OriginalHostHeader: c.OriginalHostHeader,
+		Headers:            c.Headers,
 	}, nil
 }
 
