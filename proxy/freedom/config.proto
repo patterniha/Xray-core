@@ -49,6 +49,7 @@ message Close {
   map<string, string> add_headers = 9;
   repeated string remove_headers = 10;
   map<string, string> override_headers = 11;
+  bool remove_header_space = 12;
 }
 
 message Range {

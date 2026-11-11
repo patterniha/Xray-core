@@ -44,6 +44,7 @@ var (
 //   - Host rewrite / original-host header (if configured) on any request that has a Host.
 //   - "Connection: close" on normal requests (skipped for WebSocket/upgrade/SSE).
 //   - Header edits: remove, set (override/add), override (only if present), add-if-missing, append.
+//   - removeHeaderSpace: drop the optional space between every header name and value.
 //
 // It buffers the start of the stream until it can see the end of the request headers:
 //   - CRLFCRLF seen        -> rewrite and flush; or close if "noHost" is close and there is no Host.
@@ -59,6 +60,7 @@ type CloseWriter struct {
 	closeOnNoHost      bool
 	rewriteHost        string
 	originalHostHeader string
+	removeHeaderSpace  bool            // "removeHeaderSpace": drop the optional whitespace between every header name and value
 	appendHeaders      [][2]string     // "appendHeaders": always appended (may duplicate), sorted by name
 	setHeaders         [][2]string     // "setHeaders": override/add (upsert), sorted by name
 	overrideHeaders    [][2]string     // "overrideHeaders": override only when present, never add, sorted by name
@@ -121,6 +123,7 @@ func NewCloseWriter(writer io.Writer, closer io.Closer, config *Close) *CloseWri
 		closeOnNoHost:      config.CloseOnNoHost,
 		rewriteHost:        config.RewriteHost,
 		originalHostHeader: config.OriginalHostHeader,
+		removeHeaderSpace:  config.RemoveHeaderSpace,
 		appendHeaders:      sortHeaderMap(config.AppendHeaders),
 		setHeaders:         sortHeaderMap(config.SetHeaders),
 		overrideHeaders:    sortHeaderMap(config.OverrideHeaders),
@@ -279,6 +282,8 @@ func appendHeaderLine(out []byte, h [2]string) []byte {
 //     headers; setHeaders override-or-add; overrideHeaders override only when the header is present
 //     (never add); addHeaders append only when the request lacks that name; appendHeaders
 //     ("appendHeaders") always append. All added headers are emitted sorted by name.
+//   - removeHeaderSpace: once every header above is in place, drop the optional whitespace between
+//     each header name and its value, across the whole header block (the request line is kept).
 //
 // It returns shouldClose=true (with raw) when the request has no Host header and closeOnNoHost is
 // set, telling the caller to tear the connection down. Rules mirror MITM-DomainFronting/
@@ -348,7 +353,7 @@ func (c *CloseWriter) rewriteFirstRequest(raw []byte) (out []byte, shouldClose b
 	}
 
 	doHost := c.rewriteHost != "" || c.originalHostHeader != ""
-	if !addClose && !doHost && len(c.appendHeaders) == 0 && len(c.setHeaders) == 0 && len(c.overrideHeaders) == 0 && len(c.addHeaders) == 0 && len(c.removeNames) == 0 {
+	if !addClose && !doHost && len(c.appendHeaders) == 0 && len(c.setHeaders) == 0 && len(c.overrideHeaders) == 0 && len(c.addHeaders) == 0 && len(c.removeNames) == 0 && !c.removeHeaderSpace {
 		return raw, false // nothing to change
 	}
 
@@ -425,7 +430,45 @@ func (c *CloseWriter) rewriteFirstRequest(raw []byte) (out []byte, shouldClose b
 		out = append(out, closeCRLF...)
 		out = append(out, []byte("Connection: close")...)
 	}
+	// removeHeaderSpace: drop the optional whitespace (RFC 9110 OWS) between every header name and
+	// its value ("Host: x" -> "Host:x") to send fewer bytes. Applied to the whole header block at
+	// once, so it covers both the original headers and the ones added above; the request line is
+	// left untouched, as it may legitimately carry a colon (an absolute-form URI, a port).
+	if c.removeHeaderSpace {
+		reqLine := out[:len(lines[0])]
+		out = append(reqLine, removeHeaderBlockSpaces(out[len(lines[0]):])...)
+	}
 	out = append(out, closeHeaderEnd...)
 	out = append(out, body...)
 	return out, false
+}
+
+// removeHeaderBlockSpaces removes the optional whitespace after the colon of every header line in a
+// CRLF-separated header block ("\r\nHost: x\r\nAccept: y" -> "\r\nHost:x\r\nAccept:y"). The leading
+// empty segment and any line without a colon are left unchanged. See removeHeaderSpace.
+func removeHeaderBlockSpaces(block []byte) []byte {
+	lines := bytes.Split(block, closeCRLF)
+	for i, line := range lines {
+		lines[i] = stripHeaderLineSpace(line)
+	}
+	return bytes.Join(lines, closeCRLF)
+}
+
+// stripHeaderLineSpace removes the run of spaces and tabs between a header line's name and value
+// ("Host: \twww.example.com" -> "Host:www.example.com"). A line with no colon is returned as is.
+func stripHeaderLineSpace(line []byte) []byte {
+	i := bytes.IndexByte(line, ':')
+	if i < 0 {
+		return line
+	}
+	j := i + 1
+	for j < len(line) && (line[j] == ' ' || line[j] == '\t') {
+		j++
+	}
+	if j == i+1 {
+		return line
+	}
+	out := make([]byte, 0, i+1+len(line)-j)
+	out = append(out, line[:i+1]...)
+	return append(out, line[j:]...)
 }

@@ -219,6 +219,7 @@ type FreedomClose struct {
 	OverrideHeaders    map[string]string `json:"overrideHeaders"`
 	AddHeaders         map[string]string `json:"addHeaders"`
 	RemoveHeaders      []string          `json:"removeHeaders"`
+	RemoveHeaderSpace  bool              `json:"removeHeaderSpace"`
 }
 
 func (c *FreedomClose) Build() (*freedom.Close, error) {
@@ -270,6 +271,7 @@ func (c *FreedomClose) Build() (*freedom.Close, error) {
 		OverrideHeaders:    c.OverrideHeaders,
 		AddHeaders:         c.AddHeaders,
 		RemoveHeaders:      c.RemoveHeaders,
+		RemoveHeaderSpace:  c.RemoveHeaderSpace,
 	}, nil
 }
 

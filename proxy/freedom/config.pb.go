@@ -313,6 +313,7 @@ type Close struct {
 	AddHeaders         map[string]string      `protobuf:"bytes,9,rep,name=add_headers,json=addHeaders,proto3" json:"add_headers,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"bytes,2,opt,name=value"`
 	RemoveHeaders      []string               `protobuf:"bytes,10,rep,name=remove_headers,json=removeHeaders,proto3" json:"remove_headers,omitempty"`
 	OverrideHeaders    map[string]string      `protobuf:"bytes,11,rep,name=override_headers,json=overrideHeaders,proto3" json:"override_headers,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"bytes,2,opt,name=value"`
+	RemoveHeaderSpace  bool                   `protobuf:"varint,12,opt,name=remove_header_space,json=removeHeaderSpace,proto3" json:"remove_header_space,omitempty"`
 	unknownFields      protoimpl.UnknownFields
 	sizeCache          protoimpl.SizeCache
 }
@@ -422,6 +423,13 @@ func (x *Close) GetOverrideHeaders() map[string]string {
 		return x.OverrideHeaders
 	}
 	return nil
+}
+
+func (x *Close) GetRemoveHeaderSpace() bool {
+	if x != nil {
+		return x.RemoveHeaderSpace
+	}
+	return false
 }
 
 type Range struct {
@@ -687,7 +695,7 @@ const file_proxy_freedom_config_proto_rawDesc = "" +
 	"\tdelay_min\x18\x03 \x01(\x04R\bdelayMin\x12\x1b\n" +
 	"\tdelay_max\x18\x04 \x01(\x04R\bdelayMax\x12\x16\n" +
 	"\x06packet\x18\x05 \x01(\fR\x06packet\x12\x19\n" +
-	"\bapply_to\x18\x06 \x01(\tR\aapplyTo\"\xec\x06\n" +
+	"\bapply_to\x18\x06 \x01(\tR\aapplyTo\"\x9c\a\n" +
 	"\x05Close\x12\x1d\n" +
 	"\n" +
 	"timeout_ms\x18\x01 \x01(\x05R\ttimeoutMs\x12(\n" +
@@ -703,7 +711,8 @@ const file_proxy_freedom_config_proto_rawDesc = "" +
 	"addHeaders\x12%\n" +
 	"\x0eremove_headers\x18\n" +
 	" \x03(\tR\rremoveHeaders\x12Y\n" +
-	"\x10override_headers\x18\v \x03(\v2..xray.proxy.freedom.Close.OverrideHeadersEntryR\x0foverrideHeaders\x1a@\n" +
+	"\x10override_headers\x18\v \x03(\v2..xray.proxy.freedom.Close.OverrideHeadersEntryR\x0foverrideHeaders\x12.\n" +
+	"\x13remove_header_space\x18\f \x01(\bR\x11removeHeaderSpace\x1a@\n" +
 	"\x12AppendHeadersEntry\x12\x10\n" +
 	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
 	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01\x1a=\n" +
