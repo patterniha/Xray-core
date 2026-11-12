@@ -138,6 +138,16 @@ func applyOutboundSocketOptions(network string, address string, fd uintptr, conf
 				return errors.New("failed to unset SO_KEEPALIVE", err)
 			}
 		}
+
+		if config.TcpUserTimeout > 0 {
+			// macOS has no TCP_USER_TIMEOUT; TCP_RXT_CONNDROPTIME is the equivalent
+			// (drop the connection after this long retransmitting unacknowledged data)
+			// but is denominated in seconds, so round the millisecond value up (min 1s).
+			secs := (int(config.TcpUserTimeout) + 999) / 1000
+			if err := unix.SetsockoptInt(int(fd), unix.IPPROTO_TCP, unix.TCP_RXT_CONNDROPTIME, secs); err != nil {
+				return errors.New("failed to set TCP_RXT_CONNDROPTIME", err)
+			}
+		}
 	}
 
 	if config.Interface != "" {
@@ -231,6 +241,16 @@ func applyInboundSocketOptions(network string, fd uintptr, config *SocketConfig)
 		} else if config.TcpKeepAliveInterval < 0 || config.TcpKeepAliveIdle < 0 {
 			if err := unix.SetsockoptInt(int(fd), unix.SOL_SOCKET, unix.SO_KEEPALIVE, 0); err != nil {
 				return errors.New("failed to unset SO_KEEPALIVE", err)
+			}
+		}
+
+		if config.TcpUserTimeout > 0 {
+			// macOS has no TCP_USER_TIMEOUT; TCP_RXT_CONNDROPTIME is the equivalent
+			// (drop the connection after this long retransmitting unacknowledged data)
+			// but is denominated in seconds, so round the millisecond value up (min 1s).
+			secs := (int(config.TcpUserTimeout) + 999) / 1000
+			if err := unix.SetsockoptInt(int(fd), unix.IPPROTO_TCP, unix.TCP_RXT_CONNDROPTIME, secs); err != nil {
+				return errors.New("failed to set TCP_RXT_CONNDROPTIME", err)
 			}
 		}
 	}

@@ -24,6 +24,15 @@ var tcpKeepAlivePerSocketSupported = sync.OnceValue(func() bool {
 	return build >= 16299
 })
 
+// tcpMaxRtSupported reports whether this Windows build supports TCP_MAXRTMS, the
+// equivalent of Linux TCP_USER_TIMEOUT, added in Windows 8 / Server 2012 (build
+// 9200). On older builds (e.g. Windows 7) the connection timeout is left at the
+// OS default.
+var tcpMaxRtSupported = sync.OnceValue(func() bool {
+	_, _, build := windows.RtlGetNtVersionNumbers()
+	return build >= 9200
+})
+
 const (
 	TCP_FASTOPEN    = 15
 	IP_UNICAST_IF   = 31
@@ -88,6 +97,16 @@ func applyOutboundSocketOptions(network string, address string, fd uintptr, conf
 		} else if config.TcpKeepAliveIdle < 0 {
 			if err := syscall.SetsockoptInt(syscall.Handle(fd), syscall.SOL_SOCKET, syscall.SO_KEEPALIVE, 0); err != nil {
 				return errors.New("failed to unset SO_KEEPALIVE", err)
+			}
+		}
+
+		if config.TcpUserTimeout > 0 && tcpMaxRtSupported() {
+			// TCP_MAXRTMS (milliseconds) is the Windows equivalent of Linux
+			// TCP_USER_TIMEOUT: abort the connection after this long with
+			// unacknowledged data. Skipped (OS default) on builds older than
+			// Windows 8 / Server 2012.
+			if err := syscall.SetsockoptInt(syscall.Handle(fd), syscall.IPPROTO_TCP, windows.TCP_MAXRTMS, int(config.TcpUserTimeout)); err != nil {
+				return errors.New("failed to set TCP_MAXRTMS", err)
 			}
 		}
 	}
@@ -163,6 +182,16 @@ func applyInboundSocketOptions(network string, fd uintptr, config *SocketConfig)
 		} else if config.TcpKeepAliveInterval < 0 || config.TcpKeepAliveIdle < 0 {
 			if err := syscall.SetsockoptInt(syscall.Handle(fd), syscall.SOL_SOCKET, syscall.SO_KEEPALIVE, 0); err != nil {
 				return errors.New("failed to unset SO_KEEPALIVE", err)
+			}
+		}
+
+		if config.TcpUserTimeout > 0 && tcpMaxRtSupported() {
+			// TCP_MAXRTMS (milliseconds) is the Windows equivalent of Linux
+			// TCP_USER_TIMEOUT: abort the connection after this long with
+			// unacknowledged data. Skipped (OS default) on builds older than
+			// Windows 8 / Server 2012.
+			if err := syscall.SetsockoptInt(syscall.Handle(fd), syscall.IPPROTO_TCP, windows.TCP_MAXRTMS, int(config.TcpUserTimeout)); err != nil {
+				return errors.New("failed to set TCP_MAXRTMS", err)
 			}
 		}
 	}
