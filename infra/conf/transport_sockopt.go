@@ -52,6 +52,7 @@ type SocketConfig struct {
 	TCPKeepAliveInterval  int32                  `json:"tcpKeepAliveInterval"`
 	TCPKeepAliveIdle      int32                  `json:"tcpKeepAliveIdle"`
 	TCPKeepAliveCount     int32                  `json:"tcpKeepAliveCount"`
+	TCPHandshakeTimeout   int32                  `json:"tcpHandshakeTimeout"`
 	TCPCongestion         string                 `json:"tcpCongestion"`
 	TCPWindowClamp        int32                  `json:"tcpWindowClamp"`
 	TCPMaxSeg             int32                  `json:"tcpMaxSeg"`
@@ -174,6 +175,7 @@ func (c *SocketConfig) Build() (*internet.SocketConfig, error) {
 		TcpKeepAliveInterval: c.TCPKeepAliveInterval,
 		TcpKeepAliveIdle:     c.TCPKeepAliveIdle,
 		TcpKeepAliveCount:    c.TCPKeepAliveCount,
+		TcpHandshakeTimeout:  c.TCPHandshakeTimeout,
 		TcpCongestion:        c.TCPCongestion,
 		TcpWindowClamp:       c.TCPWindowClamp,
 		TcpMaxSeg:            c.TCPMaxSeg,

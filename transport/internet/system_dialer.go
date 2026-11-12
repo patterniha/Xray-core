@@ -157,6 +157,7 @@ func (d *DefaultSystemDialer) DialInitial(ctx context.Context, src net.Address, 
 		Count:    -1,
 	}
 	keepAlive := time.Duration(0)
+	handshakeTimeout := 16 * time.Second
 	if sockopt != nil {
 		if sockopt.TcpKeepAliveIdle*sockopt.TcpKeepAliveInterval < 0 {
 			return nil, errors.New("invalid TcpKeepAliveIdle or TcpKeepAliveInterval value: ", sockopt.TcpKeepAliveIdle, " ", sockopt.TcpKeepAliveInterval)
@@ -176,9 +177,13 @@ func (d *DefaultSystemDialer) DialInitial(ctx context.Context, src net.Address, 
 		if sockopt.TcpKeepAliveCount > 0 {
 			keepAliveConfig.Count = int(sockopt.TcpKeepAliveCount)
 		}
+		// tcpHandshakeTimeout (ms) overrides the default 16s connect deadline; 0/unset keeps it.
+		if sockopt.TcpHandshakeTimeout > 0 {
+			handshakeTimeout = time.Duration(sockopt.TcpHandshakeTimeout) * time.Millisecond
+		}
 	}
 	dialer := &net.Dialer{
-		Timeout:         time.Second * 16,
+		Timeout:         handshakeTimeout,
 		LocalAddr:       resolveSrcAddr(dest.Network, src),
 		KeepAlive:       keepAlive,
 		KeepAliveConfig: keepAliveConfig,

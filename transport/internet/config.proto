@@ -158,6 +158,10 @@ message SocketConfig {
   // before dropping a connection (TCP_KEEPCNT). 0 or unset keeps the OS
   // default; a positive value is applied on every OS that supports it.
   int32 tcp_keep_alive_count = 25;
+
+  // TcpHandshakeTimeout is the deadline for the TCP connect, in milliseconds.
+  // 0 or unset keeps the default (16s); a positive value overrides it.
+  int32 tcp_handshake_timeout = 26;
 }
 
 message HappyEyeballsConfig {
