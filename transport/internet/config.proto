@@ -153,6 +153,11 @@ message SocketConfig {
   // DialMode selects which code DefaultSystemDialer.Dial runs, e.g. "code-1".
   // Empty selects the default code.
   string dial_mode = 24;
+
+  // TcpKeepAliveCount is the maximum number of keepalive probes TCP sends
+  // before dropping a connection (TCP_KEEPCNT). 0 or unset keeps the OS
+  // default; a positive value is applied on every OS that supports it.
+  int32 tcp_keep_alive_count = 25;
 }
 
 message HappyEyeballsConfig {

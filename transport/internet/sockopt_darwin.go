@@ -21,6 +21,8 @@ const (
 	TCP_FASTOPEN_CLIENT = 0x02 // nolint: revive,stylecheck
 	// syscall.TCP_KEEPINTVL is missing on some darwin architectures.
 	sysTCP_KEEPINTVL = 0x101 // nolint: revive,stylecheck
+	// syscall.TCP_KEEPCNT is missing on some darwin architectures.
+	sysTCP_KEEPCNT = 0x102 // nolint: revive,stylecheck
 )
 
 const (
@@ -112,7 +114,7 @@ func applyOutboundSocketOptions(network string, address string, fd uintptr, conf
 			}
 		}
 
-		if config.TcpKeepAliveIdle > 0 || config.TcpKeepAliveInterval > 0 {
+		if config.TcpKeepAliveIdle > 0 || config.TcpKeepAliveInterval > 0 || config.TcpKeepAliveCount > 0 {
 			if config.TcpKeepAliveIdle > 0 {
 				if err := unix.SetsockoptInt(int(fd), unix.IPPROTO_TCP, unix.TCP_KEEPALIVE, int(config.TcpKeepAliveIdle)); err != nil {
 					return errors.New("failed to set TCP_KEEPALIVE", err)
@@ -121,6 +123,11 @@ func applyOutboundSocketOptions(network string, address string, fd uintptr, conf
 			if config.TcpKeepAliveInterval > 0 {
 				if err := unix.SetsockoptInt(int(fd), unix.IPPROTO_TCP, sysTCP_KEEPINTVL, int(config.TcpKeepAliveInterval)); err != nil {
 					return errors.New("failed to set TCP_KEEPINTVL", err)
+				}
+			}
+			if config.TcpKeepAliveCount > 0 {
+				if err := unix.SetsockoptInt(int(fd), unix.IPPROTO_TCP, sysTCP_KEEPCNT, int(config.TcpKeepAliveCount)); err != nil {
+					return errors.New("failed to set TCP_KEEPCNT", err)
 				}
 			}
 			if err := unix.SetsockoptInt(int(fd), unix.SOL_SOCKET, unix.SO_KEEPALIVE, 1); err != nil {
@@ -202,7 +209,7 @@ func applyInboundSocketOptions(network string, fd uintptr, config *SocketConfig)
 			}
 		}
 
-		if config.TcpKeepAliveIdle > 0 || config.TcpKeepAliveInterval > 0 {
+		if config.TcpKeepAliveIdle > 0 || config.TcpKeepAliveInterval > 0 || config.TcpKeepAliveCount > 0 {
 			if config.TcpKeepAliveIdle > 0 {
 				if err := unix.SetsockoptInt(int(fd), unix.IPPROTO_TCP, unix.TCP_KEEPALIVE, int(config.TcpKeepAliveIdle)); err != nil {
 					return errors.New("failed to set TCP_KEEPALIVE", err)
@@ -211,6 +218,11 @@ func applyInboundSocketOptions(network string, fd uintptr, config *SocketConfig)
 			if config.TcpKeepAliveInterval > 0 {
 				if err := unix.SetsockoptInt(int(fd), unix.IPPROTO_TCP, sysTCP_KEEPINTVL, int(config.TcpKeepAliveInterval)); err != nil {
 					return errors.New("failed to set TCP_KEEPINTVL", err)
+				}
+			}
+			if config.TcpKeepAliveCount > 0 {
+				if err := unix.SetsockoptInt(int(fd), unix.IPPROTO_TCP, sysTCP_KEEPCNT, int(config.TcpKeepAliveCount)); err != nil {
+					return errors.New("failed to set TCP_KEEPCNT", err)
 				}
 			}
 			if err := unix.SetsockoptInt(int(fd), unix.SOL_SOCKET, unix.SO_KEEPALIVE, 1); err != nil {

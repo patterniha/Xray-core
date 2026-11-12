@@ -661,9 +661,13 @@ type SocketConfig struct {
 	TrustedXForwardedFor       []string             `protobuf:"bytes,23,rep,name=trusted_x_forwarded_for,json=trustedXForwardedFor,proto3" json:"trusted_x_forwarded_for,omitempty"`
 	// DialMode selects which code DefaultSystemDialer.Dial runs, e.g. "code-1".
 	// Empty selects the default code.
-	DialMode      string `protobuf:"bytes,24,opt,name=dial_mode,json=dialMode,proto3" json:"dial_mode,omitempty"`
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
+	DialMode string `protobuf:"bytes,24,opt,name=dial_mode,json=dialMode,proto3" json:"dial_mode,omitempty"`
+	// TcpKeepAliveCount is the maximum number of keepalive probes TCP sends
+	// before dropping a connection (TCP_KEEPCNT). 0 or unset keeps the OS
+	// default; a positive value is applied on every OS that supports it.
+	TcpKeepAliveCount int32 `protobuf:"varint,25,opt,name=tcp_keep_alive_count,json=tcpKeepAliveCount,proto3" json:"tcp_keep_alive_count,omitempty"`
+	unknownFields     protoimpl.UnknownFields
+	sizeCache         protoimpl.SizeCache
 }
 
 func (x *SocketConfig) Reset() {
@@ -850,6 +854,13 @@ func (x *SocketConfig) GetDialMode() string {
 	return ""
 }
 
+func (x *SocketConfig) GetTcpKeepAliveCount() int32 {
+	if x != nil {
+		return x.TcpKeepAliveCount
+	}
+	return 0
+}
+
 type HappyEyeballsConfig struct {
 	state            protoimpl.MessageState `protogen:"open.v1"`
 	PrioritizeIpv6   bool                   `protobuf:"varint,1,opt,name=prioritize_ipv6,json=prioritizeIpv6,proto3" json:"prioritize_ipv6,omitempty"`
@@ -970,7 +981,7 @@ const file_transport_internet_config_proto_rawDesc = "" +
 	"\x05level\x18\x03 \x01(\tR\x05level\x12\x10\n" +
 	"\x03opt\x18\x04 \x01(\tR\x03opt\x12\x14\n" +
 	"\x05value\x18\x05 \x01(\tR\x05value\x12\x12\n" +
-	"\x04type\x18\x06 \x01(\tR\x04type\"\xe6\b\n" +
+	"\x04type\x18\x06 \x01(\tR\x04type\"\x97\t\n" +
 	"\fSocketConfig\x12\x12\n" +
 	"\x04mark\x18\x01 \x01(\x05R\x04mark\x12\x10\n" +
 	"\x03tfo\x18\x02 \x01(\x05R\x03tfo\x12H\n" +
@@ -994,7 +1005,8 @@ const file_transport_internet_config_proto_rawDesc = "" +
 	"\x15address_port_strategy\x18\x15 \x01(\x0e2,.xray.transport.internet.AddressPortStrategyR\x13addressPortStrategy\x12S\n" +
 	"\x0ehappy_eyeballs\x18\x16 \x01(\v2,.xray.transport.internet.HappyEyeballsConfigR\rhappyEyeballs\x125\n" +
 	"\x17trusted_x_forwarded_for\x18\x17 \x03(\tR\x14trustedXForwardedFor\x12\x1b\n" +
-	"\tdial_mode\x18\x18 \x01(\tR\bdialMode\"/\n" +
+	"\tdial_mode\x18\x18 \x01(\tR\bdialMode\x12/\n" +
+	"\x14tcp_keep_alive_count\x18\x19 \x01(\x05R\x11tcpKeepAliveCount\"/\n" +
 	"\n" +
 	"TProxyMode\x12\a\n" +
 	"\x03Off\x10\x00\x12\n" +

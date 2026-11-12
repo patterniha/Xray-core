@@ -171,6 +171,11 @@ func (d *DefaultSystemDialer) DialInitial(ctx context.Context, src net.Address, 
 		if sockopt.TcpKeepAliveInterval > 0 {
 			keepAliveConfig.Interval = time.Duration(sockopt.TcpKeepAliveInterval) * time.Second
 		}
+		// A positive count sets TCP_KEEPCNT; 0/unset leaves Count at -1 (OS default).
+		// Go applies this on every platform that supports it and no-ops elsewhere.
+		if sockopt.TcpKeepAliveCount > 0 {
+			keepAliveConfig.Count = int(sockopt.TcpKeepAliveCount)
+		}
 	}
 	dialer := &net.Dialer{
 		Timeout:         time.Second * 16,

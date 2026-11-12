@@ -7,11 +7,22 @@ import (
 	"runtime"
 	"strconv"
 	"strings"
+	"sync"
 	"syscall"
 	"unsafe"
 
 	"github.com/xtls/xray-core/common/errors"
+	"golang.org/x/sys/windows"
 )
+
+// tcpKeepAlivePerSocketSupported reports whether this Windows build supports the
+// per-socket TCP_KEEPIDLE/TCP_KEEPINTVL/TCP_KEEPCNT options, which were added in
+// Windows 10, version 1709 (build 16299). On older builds (e.g. Windows Server
+// 2016) only SO_KEEPALIVE can be toggled and the probe count is not settable.
+var tcpKeepAlivePerSocketSupported = sync.OnceValue(func() bool {
+	_, _, build := windows.RtlGetNtVersionNumbers()
+	return build >= 16299
+})
 
 const (
 	TCP_FASTOPEN    = 15
@@ -125,11 +136,31 @@ func applyInboundSocketOptions(network string, fd uintptr, config *SocketConfig)
 		if err := setTFO(syscall.Handle(fd), config.ParseTFOValue()); err != nil {
 			return err
 		}
-		if config.TcpKeepAliveIdle > 0 {
+		if config.TcpKeepAliveIdle > 0 || config.TcpKeepAliveInterval > 0 || config.TcpKeepAliveCount > 0 {
+			// TCP_KEEPIDLE/TCP_KEEPINTVL/TCP_KEEPCNT are per-socket options since
+			// Windows 10, version 1709. On older builds we still enable SO_KEEPALIVE
+			// (unchanged behaviour), but the probe count stays the OS default.
+			if tcpKeepAlivePerSocketSupported() {
+				if config.TcpKeepAliveIdle > 0 {
+					if err := syscall.SetsockoptInt(syscall.Handle(fd), syscall.IPPROTO_TCP, windows.TCP_KEEPIDLE, int(config.TcpKeepAliveIdle)); err != nil {
+						return errors.New("failed to set TCP_KEEPIDLE", err)
+					}
+				}
+				if config.TcpKeepAliveInterval > 0 {
+					if err := syscall.SetsockoptInt(syscall.Handle(fd), syscall.IPPROTO_TCP, windows.TCP_KEEPINTVL, int(config.TcpKeepAliveInterval)); err != nil {
+						return errors.New("failed to set TCP_KEEPINTVL", err)
+					}
+				}
+				if config.TcpKeepAliveCount > 0 {
+					if err := syscall.SetsockoptInt(syscall.Handle(fd), syscall.IPPROTO_TCP, windows.TCP_KEEPCNT, int(config.TcpKeepAliveCount)); err != nil {
+						return errors.New("failed to set TCP_KEEPCNT", err)
+					}
+				}
+			}
 			if err := syscall.SetsockoptInt(syscall.Handle(fd), syscall.SOL_SOCKET, syscall.SO_KEEPALIVE, 1); err != nil {
 				return errors.New("failed to set SO_KEEPALIVE", err)
 			}
-		} else if config.TcpKeepAliveIdle < 0 {
+		} else if config.TcpKeepAliveInterval < 0 || config.TcpKeepAliveIdle < 0 {
 			if err := syscall.SetsockoptInt(syscall.Handle(fd), syscall.SOL_SOCKET, syscall.SO_KEEPALIVE, 0); err != nil {
 				return errors.New("failed to unset SO_KEEPALIVE", err)
 			}

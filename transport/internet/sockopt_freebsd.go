@@ -141,7 +141,7 @@ func applyOutboundSocketOptions(network string, address string, fd uintptr, conf
 				return errors.New("failed to set TCP_FASTOPEN_CONNECT=", tfo).Base(err)
 			}
 		}
-		if config.TcpKeepAliveIdle > 0 || config.TcpKeepAliveInterval > 0 {
+		if config.TcpKeepAliveIdle > 0 || config.TcpKeepAliveInterval > 0 || config.TcpKeepAliveCount > 0 {
 			if config.TcpKeepAliveIdle > 0 {
 				if err := syscall.SetsockoptInt(int(fd), syscall.IPPROTO_TCP, syscall.TCP_KEEPIDLE, int(config.TcpKeepAliveIdle)); err != nil {
 					return errors.New("failed to set TCP_KEEPIDLE", err)
@@ -150,6 +150,11 @@ func applyOutboundSocketOptions(network string, address string, fd uintptr, conf
 			if config.TcpKeepAliveInterval > 0 {
 				if err := syscall.SetsockoptInt(int(fd), syscall.IPPROTO_TCP, syscall.TCP_KEEPINTVL, int(config.TcpKeepAliveInterval)); err != nil {
 					return errors.New("failed to set TCP_KEEPINTVL", err)
+				}
+			}
+			if config.TcpKeepAliveCount > 0 {
+				if err := syscall.SetsockoptInt(int(fd), syscall.IPPROTO_TCP, syscall.TCP_KEEPCNT, int(config.TcpKeepAliveCount)); err != nil {
+					return errors.New("failed to set TCP_KEEPCNT", err)
 				}
 			}
 			if err := syscall.SetsockoptInt(int(fd), syscall.SOL_SOCKET, syscall.SO_KEEPALIVE, 1); err != nil {
@@ -190,7 +195,7 @@ func applyInboundSocketOptions(network string, fd uintptr, config *SocketConfig)
 				return errors.New("failed to set TCP_FASTOPEN=", tfo).Base(err)
 			}
 		}
-		if config.TcpKeepAliveIdle > 0 || config.TcpKeepAliveInterval > 0 {
+		if config.TcpKeepAliveIdle > 0 || config.TcpKeepAliveInterval > 0 || config.TcpKeepAliveCount > 0 {
 			if config.TcpKeepAliveIdle > 0 {
 				if err := syscall.SetsockoptInt(int(fd), syscall.IPPROTO_TCP, syscall.TCP_KEEPIDLE, int(config.TcpKeepAliveIdle)); err != nil {
 					return errors.New("failed to set TCP_KEEPIDLE", err)
@@ -199,6 +204,11 @@ func applyInboundSocketOptions(network string, fd uintptr, config *SocketConfig)
 			if config.TcpKeepAliveInterval > 0 {
 				if err := syscall.SetsockoptInt(int(fd), syscall.IPPROTO_TCP, syscall.TCP_KEEPINTVL, int(config.TcpKeepAliveInterval)); err != nil {
 					return errors.New("failed to set TCP_KEEPINTVL", err)
+				}
+			}
+			if config.TcpKeepAliveCount > 0 {
+				if err := syscall.SetsockoptInt(int(fd), syscall.IPPROTO_TCP, syscall.TCP_KEEPCNT, int(config.TcpKeepAliveCount)); err != nil {
+					return errors.New("failed to set TCP_KEEPCNT", err)
 				}
 			}
 			if err := syscall.SetsockoptInt(int(fd), syscall.SOL_SOCKET, syscall.SO_KEEPALIVE, 1); err != nil {
