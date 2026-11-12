@@ -5,8 +5,10 @@ import (
 	"reflect"
 
 	"github.com/xtls/xray-core/common"
+	"github.com/xtls/xray-core/common/errors"
 	"github.com/xtls/xray-core/common/net"
 	"github.com/xtls/xray-core/common/net/cnc"
+	"github.com/xtls/xray-core/common/serial"
 	"github.com/xtls/xray-core/transport/internet/finalmask"
 )
 
@@ -54,17 +56,56 @@ func ToMemoryStreamConfig(s *StreamConfig) (*MemoryStreamConfig, error) {
 		mss.SecurityType = s.SecurityType
 		mss.SecuritySettings = ess
 	}
-	if s != nil && (len(s.Tcpmasks) != 0 || len(s.Udpmasks) != 0) {
-		var tcpMasks []finalmask.TCPMask
-		var udpMasks []finalmask.UDPMask
-
-		for i := range s.Tcpmasks {
-			instance := common.Must2(s.Tcpmasks[i].GetInstance())
-			tcpMasks = append(tcpMasks, instance.(finalmask.TCPMask))
+	if s != nil && (len(s.Tcpmasks) != 0 || len(s.Udpmasks) != 0 ||
+		len(s.Tcp4Masks) != 0 || len(s.Tcp6Masks) != 0 ||
+		len(s.Udp4Masks) != 0 || len(s.Udp6Masks) != 0) {
+		buildTCP := func(src []*serial.TypedMessage) []finalmask.TCPMask {
+			var out []finalmask.TCPMask
+			for i := range src {
+				out = append(out, common.Must2(src[i].GetInstance()).(finalmask.TCPMask))
+			}
+			return out
 		}
-		for i := range s.Udpmasks {
-			instance := common.Must2(s.Udpmasks[i].GetInstance())
-			udpMasks = append(udpMasks, instance.(finalmask.UDPMask))
+		buildUDP := func(src []*serial.TypedMessage) []finalmask.UDPMask {
+			var out []finalmask.UDPMask
+			for i := range src {
+				out = append(out, common.Must2(src[i].GetInstance()).(finalmask.UDPMask))
+			}
+			return out
+		}
+		tcpMasks := buildTCP(s.Tcpmasks)
+		udpMasks := buildUDP(s.Udpmasks)
+		tcp4Masks := buildTCP(s.Tcp4Masks)
+		tcp6Masks := buildTCP(s.Tcp6Masks)
+		udp4Masks := buildUDP(s.Udp4Masks)
+		udp6Masks := buildUDP(s.Udp6Masks)
+
+		// Family lists are applied only after a dial-first (to learn the family),
+		// so a dial-controlling mask (HandleDial, e.g. udphop/xicmp) has nothing
+		// to dial there.
+		hasHandleDial := func(m interface{}) bool {
+			_, ok := m.(interface{ HandleDial() })
+			return ok
+		}
+		for _, m := range tcp4Masks {
+			if hasHandleDial(m) {
+				return nil, errors.New(`finalmask: a dial-controlling mask can't be used in "tcp4"`)
+			}
+		}
+		for _, m := range tcp6Masks {
+			if hasHandleDial(m) {
+				return nil, errors.New(`finalmask: a dial-controlling mask can't be used in "tcp6"`)
+			}
+		}
+		for _, m := range udp4Masks {
+			if hasHandleDial(m) {
+				return nil, errors.New(`finalmask: a dial-controlling mask (e.g. udphop/xicmp) can't be used in "udp4"`)
+			}
+		}
+		for _, m := range udp6Masks {
+			if hasHandleDial(m) {
+				return nil, errors.New(`finalmask: a dial-controlling mask (e.g. udphop/xicmp) can't be used in "udp6"`)
+			}
 		}
 
 		dialTCP := func(ctx context.Context, dest net.Destination) (net.Conn, error) {
@@ -96,6 +137,7 @@ func ToMemoryStreamConfig(s *StreamConfig) (*MemoryStreamConfig, error) {
 			return ListenSystemPacket(ctx, addr, mss.SocketSettings)
 		}
 		mss.FinalMask = finalmask.NewFinalMask(tcpMasks, udpMasks, dialTCP, listen, dialUDP, listenPacket)
+		mss.FinalMask.SetFamilyMasks(tcp4Masks, tcp6Masks, udp4Masks, udp6Masks)
 	}
 
 	if s != nil && s.QuicParams != nil {

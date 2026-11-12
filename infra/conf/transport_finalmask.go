@@ -1318,6 +1318,10 @@ func (config *QuicParamsConfig) Build() (proto.Message, error) {
 
 type FinalMask struct {
 	Tcp        []Mask            `json:"tcp"`
+	Tcp4       []Mask            `json:"tcp4"`
+	Tcp6       []Mask            `json:"tcp6"`
 	Udp        []Mask            `json:"udp"`
+	Udp4       []Mask            `json:"udp4"`
+	Udp6       []Mask            `json:"udp6"`
 	QuicParams *QuicParamsConfig `json:"quicParams"`
 }

@@ -33,8 +33,16 @@ type UDPMask interface {
 }
 
 type FinalMask struct {
-	tcpMasks     []TCPMask
-	udpMasks     []UDPMask
+	tcpMasks []TCPMask
+	udpMasks []UDPMask
+	// Family-specific outbound masks: used in place of tcpMasks/udpMasks when the
+	// dialed connection's remote IP is of that family. Set via SetFamilyMasks, and
+	// mutually exclusive with the generic list of the same protocol (enforced at
+	// config build). Dial side only — the listen/accept path keeps the generic lists.
+	tcp4Masks    []TCPMask
+	tcp6Masks    []TCPMask
+	udp4Masks    []UDPMask
+	udp6Masks    []UDPMask
 	dialTCP      func(context.Context, net.Destination) (net.Conn, error)
 	listen       func(context.Context, net.Addr) (net.Listener, error)
 	dialUDP      func(context.Context, net.Destination) (net.PacketConn, net.Addr, error)
@@ -54,7 +62,59 @@ func NewFinalMask(tcpMasks []TCPMask, udpMasks []UDPMask, dialTCP func(context.C
 	}
 }
 
+// SetFamilyMasks sets the family-specific outbound mask lists. Like NewFinalMask
+// it reverses each list so config order (first = outermost) becomes apply order.
+// These must not contain dial-controlling (HandleDial) masks — the caller dials
+// first to learn the family, so there is nothing for such a mask to dial.
+func (fm *FinalMask) SetFamilyMasks(tcp4, tcp6 []TCPMask, udp4, udp6 []UDPMask) {
+	slices.Reverse(tcp4)
+	slices.Reverse(tcp6)
+	slices.Reverse(udp4)
+	slices.Reverse(udp6)
+	fm.tcp4Masks = tcp4
+	fm.tcp6Masks = tcp6
+	fm.udp4Masks = udp4
+	fm.udp6Masks = udp6
+}
+
+// addrIsIPv6 reports whether addr's IP is IPv6 (IPv4 and IPv4-mapped count as IPv4).
+func addrIsIPv6(addr net.Addr) bool {
+	var ip net.IP
+	switch a := addr.(type) {
+	case *net.TCPAddr:
+		ip = a.IP
+	case *net.UDPAddr:
+		ip = a.IP
+	case *net.IPAddr:
+		ip = a.IP
+	default:
+		if addr == nil {
+			return false
+		}
+		host, _, err := net.SplitHostPort(addr.String())
+		if err != nil {
+			host = addr.String()
+		}
+		ip = net.ParseIP(host)
+	}
+	return ip != nil && ip.To4() == nil
+}
+
 func (fm *FinalMask) DialTCP(ctx context.Context, dest net.Destination) (net.Conn, error) {
+	if len(fm.tcp4Masks) > 0 || len(fm.tcp6Masks) > 0 {
+		// Family-split: dial first, then apply the list for the remote IP family.
+		// finalmask runs after the dial, so the real remote IP is known even when
+		// dest is a domain. These lists carry no HandleDial masks (rejected at build).
+		conn, err := fm.dialTCP(ctx, dest)
+		if err != nil {
+			return nil, err
+		}
+		masks := fm.tcp4Masks
+		if conn != nil && addrIsIPv6(conn.RemoteAddr()) {
+			masks = fm.tcp6Masks
+		}
+		return fm.wrapClientTCP(ctx, dest, conn, masks)
+	}
 	if len(fm.tcpMasks) == 0 {
 		return fm.dialTCP(ctx, dest)
 	}
@@ -73,6 +133,12 @@ func (fm *FinalMask) DialTCP(ctx context.Context, dest net.Destination) (net.Con
 			return nil, err
 		}
 	}
+	return fm.wrapClientTCP(ctx, dest, conn, fm.tcpMasks)
+}
+
+// wrapClientTCP applies masks (in slice order) over conn. conn may be nil when the
+// first mask is a HandleDial mask that dials via the provided Dialer.
+func (fm *FinalMask) wrapClientTCP(ctx context.Context, dest net.Destination, conn net.Conn, masks []TCPMask) (net.Conn, error) {
 	dialer := &Dialer{
 		DialTCP: func(dest net.Destination) (net.Conn, error) {
 			return fm.dialTCP(ctx, dest)
@@ -85,9 +151,10 @@ func (fm *FinalMask) DialTCP(ctx context.Context, dest net.Destination) (net.Con
 			return &net.PacketConnWrapper{PacketConn: conn, Dest: addr}, err
 		},
 	}
-	for i := range fm.tcpMasks {
+	var err error
+	for i := range masks {
 		var newConn net.Conn
-		newConn, err = fm.tcpMasks[i].WrapConnClient(conn, &dest, dialer)
+		newConn, err = masks[i].WrapConnClient(conn, &dest, dialer)
 		if err != nil {
 			common.CloseIfExists(conn)
 			return nil, err
@@ -139,6 +206,19 @@ func (fm *FinalMask) Listen(ctx context.Context, addr net.Addr) (net.Listener, e
 }
 
 func (fm *FinalMask) DialUDP(ctx context.Context, dest net.Destination) (net.Conn, error) {
+	if len(fm.udp4Masks) > 0 || len(fm.udp6Masks) > 0 {
+		// Family-split: dial first, then apply the list for the remote IP family.
+		// These lists carry no HandleDial masks (rejected at config build).
+		conn, addr, err := fm.dialUDP(ctx, dest)
+		if err != nil {
+			return nil, err
+		}
+		masks := fm.udp4Masks
+		if addrIsIPv6(addr) {
+			masks = fm.udp6Masks
+		}
+		return fm.wrapClientUDP(ctx, dest, conn, addr, masks)
+	}
 	if len(fm.udpMasks) == 0 {
 		conn, addr, err := fm.dialUDP(ctx, dest)
 		if err != nil {
@@ -162,6 +242,13 @@ func (fm *FinalMask) DialUDP(ctx context.Context, dest net.Destination) (net.Con
 			return nil, err
 		}
 	}
+	return fm.wrapClientUDP(ctx, dest, conn, addr, fm.udpMasks)
+}
+
+// wrapClientUDP applies masks over conn (a dialed packet conn, or nil when the
+// first mask is a HandleDial mask that dials via the Dialer), threading header
+// masks through headerManagerConn. addr is the resolved remote address, if known.
+func (fm *FinalMask) wrapClientUDP(ctx context.Context, dest net.Destination, conn net.PacketConn, addr net.Addr, masks []UDPMask) (net.Conn, error) {
 	dialer := &Dialer{
 		DialTCP: func(dest net.Destination) (net.Conn, error) {
 			return fm.dialTCP(ctx, dest)
@@ -176,10 +263,11 @@ func (fm *FinalMask) DialUDP(ctx context.Context, dest net.Destination) (net.Con
 	}
 	var sizes []int
 	var conns []net.PacketConn
-	for i := range fm.udpMasks {
+	var err error
+	for i := range masks {
 		var newConn net.PacketConn
-		if _, ok := fm.udpMasks[i].(interface{ HeaderConn() }); ok {
-			newConn, err = fm.udpMasks[i].WrapPacketConnClient(nil, nil, nil)
+		if _, ok := masks[i].(interface{ HeaderConn() }); ok {
+			newConn, err = masks[i].WrapPacketConnClient(nil, nil, nil)
 			if err != nil {
 				_ = conn.Close()
 				return nil, err
@@ -192,7 +280,7 @@ func (fm *FinalMask) DialUDP(ctx context.Context, dest net.Destination) (net.Con
 				sizes = nil
 				conns = nil
 			}
-			newConn, err = fm.udpMasks[i].WrapPacketConnClient(conn, &dest, dialer)
+			newConn, err = masks[i].WrapPacketConnClient(conn, &dest, dialer)
 			if err != nil {
 				common.CloseIfExists(conn)
 				return nil, err

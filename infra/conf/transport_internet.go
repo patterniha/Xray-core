@@ -240,19 +240,54 @@ func (c *StreamConfig) Build() (*internet.StreamConfig, error) {
 	}
 
 	if c.FinalMask != nil {
-		for _, mask := range c.FinalMask.Tcp {
-			proto, err := mask.Build(true)
-			if err != nil {
-				return nil, errors.New("failed to build mask with type ", mask.Type).Base(err)
-			}
-			config.Tcpmasks = append(config.Tcpmasks, serial.ToTypedMessage(proto))
+		// "tcp4"/"tcp6" (and "udp4"/"udp6") are the family-specific forms of "tcp"
+		// ("udp"); mixing a generic list with its family forms is ambiguous.
+		if len(c.FinalMask.Tcp) > 0 && (len(c.FinalMask.Tcp4) > 0 || len(c.FinalMask.Tcp6) > 0) {
+			return nil, errors.New(`finalmask: "tcp" can't be combined with "tcp4"/"tcp6"`)
 		}
-		for _, mask := range c.FinalMask.Udp {
-			proto, err := mask.Build(false)
-			if err != nil {
-				return nil, errors.New("failed to build mask with type ", mask.Type).Base(err)
+		if len(c.FinalMask.Udp) > 0 && (len(c.FinalMask.Udp4) > 0 || len(c.FinalMask.Udp6) > 0) {
+			return nil, errors.New(`finalmask: "udp" can't be combined with "udp4"/"udp6"`)
+		}
+		buildTcp := func(masks []Mask) ([]*serial.TypedMessage, error) {
+			var out []*serial.TypedMessage
+			for _, mask := range masks {
+				proto, err := mask.Build(true)
+				if err != nil {
+					return nil, errors.New("failed to build mask with type ", mask.Type).Base(err)
+				}
+				out = append(out, serial.ToTypedMessage(proto))
 			}
-			config.Udpmasks = append(config.Udpmasks, serial.ToTypedMessage(proto))
+			return out, nil
+		}
+		buildUdp := func(masks []Mask) ([]*serial.TypedMessage, error) {
+			var out []*serial.TypedMessage
+			for _, mask := range masks {
+				proto, err := mask.Build(false)
+				if err != nil {
+					return nil, errors.New("failed to build mask with type ", mask.Type).Base(err)
+				}
+				out = append(out, serial.ToTypedMessage(proto))
+			}
+			return out, nil
+		}
+		var err error
+		if config.Tcpmasks, err = buildTcp(c.FinalMask.Tcp); err != nil {
+			return nil, err
+		}
+		if config.Tcp4Masks, err = buildTcp(c.FinalMask.Tcp4); err != nil {
+			return nil, err
+		}
+		if config.Tcp6Masks, err = buildTcp(c.FinalMask.Tcp6); err != nil {
+			return nil, err
+		}
+		if config.Udpmasks, err = buildUdp(c.FinalMask.Udp); err != nil {
+			return nil, err
+		}
+		if config.Udp4Masks, err = buildUdp(c.FinalMask.Udp4); err != nil {
+			return nil, err
+		}
+		if config.Udp6Masks, err = buildUdp(c.FinalMask.Udp6); err != nil {
+			return nil, err
 		}
 		if c.FinalMask.QuicParams != nil {
 			proto, err := c.FinalMask.QuicParams.Build()
@@ -267,9 +302,11 @@ func (c *StreamConfig) Build() (*internet.StreamConfig, error) {
 		if c.XDRIVESettings != nil && c.XDRIVESettings.Service == "google-drive" {
 			// noise only sends datagrams of its own ahead of the QUIC ones, the
 			// other masks change those or need a peer that undoes them
-			for _, mask := range c.FinalMask.Udp {
-				if strings.ToLower(mask.Type) != "noise" {
-					return nil, errors.New(`XDRIVE: over h3 to Google Drive the only "udp" mask that works is "noise", not "`, mask.Type, `"`)
+			for _, masks := range [][]Mask{c.FinalMask.Udp, c.FinalMask.Udp4, c.FinalMask.Udp6} {
+				for _, mask := range masks {
+					if strings.ToLower(mask.Type) != "noise" {
+						return nil, errors.New(`XDRIVE: over h3 to Google Drive the only "udp" mask that works is "noise", not "`, mask.Type, `"`)
+					}
 				}
 			}
 		}

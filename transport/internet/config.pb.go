@@ -276,10 +276,17 @@ type StreamConfig struct {
 	SecuritySettings []*serial.TypedMessage `protobuf:"bytes,4,rep,name=security_settings,json=securitySettings,proto3" json:"security_settings,omitempty"`
 	Udpmasks         []*serial.TypedMessage `protobuf:"bytes,10,rep,name=udpmasks,proto3" json:"udpmasks,omitempty"`
 	Tcpmasks         []*serial.TypedMessage `protobuf:"bytes,11,rep,name=tcpmasks,proto3" json:"tcpmasks,omitempty"`
-	QuicParams       *QuicParams            `protobuf:"bytes,12,opt,name=quic_params,json=quicParams,proto3" json:"quic_params,omitempty"`
-	SocketSettings   *SocketConfig          `protobuf:"bytes,6,opt,name=socket_settings,json=socketSettings,proto3" json:"socket_settings,omitempty"`
-	unknownFields    protoimpl.UnknownFields
-	sizeCache        protoimpl.SizeCache
+	// Family-specific outbound masks: applied (in place of the generic tcpmasks/
+	// udpmasks) only when the dialed connection's remote IP is of that family.
+	// Mutually exclusive with the generic list of the same protocol.
+	Tcp4Masks      []*serial.TypedMessage `protobuf:"bytes,13,rep,name=tcp4masks,proto3" json:"tcp4masks,omitempty"`
+	Tcp6Masks      []*serial.TypedMessage `protobuf:"bytes,14,rep,name=tcp6masks,proto3" json:"tcp6masks,omitempty"`
+	Udp4Masks      []*serial.TypedMessage `protobuf:"bytes,15,rep,name=udp4masks,proto3" json:"udp4masks,omitempty"`
+	Udp6Masks      []*serial.TypedMessage `protobuf:"bytes,16,rep,name=udp6masks,proto3" json:"udp6masks,omitempty"`
+	QuicParams     *QuicParams            `protobuf:"bytes,12,opt,name=quic_params,json=quicParams,proto3" json:"quic_params,omitempty"`
+	SocketSettings *SocketConfig          `protobuf:"bytes,6,opt,name=socket_settings,json=socketSettings,proto3" json:"socket_settings,omitempty"`
+	unknownFields  protoimpl.UnknownFields
+	sizeCache      protoimpl.SizeCache
 }
 
 func (x *StreamConfig) Reset() {
@@ -364,6 +371,34 @@ func (x *StreamConfig) GetUdpmasks() []*serial.TypedMessage {
 func (x *StreamConfig) GetTcpmasks() []*serial.TypedMessage {
 	if x != nil {
 		return x.Tcpmasks
+	}
+	return nil
+}
+
+func (x *StreamConfig) GetTcp4Masks() []*serial.TypedMessage {
+	if x != nil {
+		return x.Tcp4Masks
+	}
+	return nil
+}
+
+func (x *StreamConfig) GetTcp6Masks() []*serial.TypedMessage {
+	if x != nil {
+		return x.Tcp6Masks
+	}
+	return nil
+}
+
+func (x *StreamConfig) GetUdp4Masks() []*serial.TypedMessage {
+	if x != nil {
+		return x.Udp4Masks
+	}
+	return nil
+}
+
+func (x *StreamConfig) GetUdp6Masks() []*serial.TypedMessage {
+	if x != nil {
+		return x.Udp6Masks
 	}
 	return nil
 }
@@ -946,7 +981,7 @@ const file_transport_internet_config_proto_rawDesc = "" +
 	"\x1ftransport/internet/config.proto\x12\x17xray.transport.internet\x1a!common/serial/typed_message.proto\x1a\x18common/net/address.proto\"t\n" +
 	"\x0fTransportConfig\x12#\n" +
 	"\rprotocol_name\x18\x03 \x01(\tR\fprotocolName\x12<\n" +
-	"\bsettings\x18\x02 \x01(\v2 .xray.common.serial.TypedMessageR\bsettings\"\xdd\x04\n" +
+	"\bsettings\x18\x02 \x01(\v2 .xray.common.serial.TypedMessageR\bsettings\"\xdd\x06\n" +
 	"\fStreamConfig\x125\n" +
 	"\aaddress\x18\b \x01(\v2\x1b.xray.common.net.IPOrDomainR\aaddress\x12\x12\n" +
 	"\x04port\x18\t \x01(\rR\x04port\x12#\n" +
@@ -956,7 +991,11 @@ const file_transport_internet_config_proto_rawDesc = "" +
 	"\x11security_settings\x18\x04 \x03(\v2 .xray.common.serial.TypedMessageR\x10securitySettings\x12<\n" +
 	"\budpmasks\x18\n" +
 	" \x03(\v2 .xray.common.serial.TypedMessageR\budpmasks\x12<\n" +
-	"\btcpmasks\x18\v \x03(\v2 .xray.common.serial.TypedMessageR\btcpmasks\x12D\n" +
+	"\btcpmasks\x18\v \x03(\v2 .xray.common.serial.TypedMessageR\btcpmasks\x12>\n" +
+	"\ttcp4masks\x18\r \x03(\v2 .xray.common.serial.TypedMessageR\ttcp4masks\x12>\n" +
+	"\ttcp6masks\x18\x0e \x03(\v2 .xray.common.serial.TypedMessageR\ttcp6masks\x12>\n" +
+	"\tudp4masks\x18\x0f \x03(\v2 .xray.common.serial.TypedMessageR\tudp4masks\x12>\n" +
+	"\tudp6masks\x18\x10 \x03(\v2 .xray.common.serial.TypedMessageR\tudp6masks\x12D\n" +
 	"\vquic_params\x18\f \x01(\v2#.xray.transport.internet.QuicParamsR\n" +
 	"quicParams\x12N\n" +
 	"\x0fsocket_settings\x18\x06 \x01(\v2%.xray.transport.internet.SocketConfigR\x0esocketSettings\"\x8d\x06\n" +
@@ -1092,18 +1131,22 @@ var file_transport_internet_config_proto_depIdxs = []int32{
 	9,  // 3: xray.transport.internet.StreamConfig.security_settings:type_name -> xray.common.serial.TypedMessage
 	9,  // 4: xray.transport.internet.StreamConfig.udpmasks:type_name -> xray.common.serial.TypedMessage
 	9,  // 5: xray.transport.internet.StreamConfig.tcpmasks:type_name -> xray.common.serial.TypedMessage
-	5,  // 6: xray.transport.internet.StreamConfig.quic_params:type_name -> xray.transport.internet.QuicParams
-	7,  // 7: xray.transport.internet.StreamConfig.socket_settings:type_name -> xray.transport.internet.SocketConfig
-	2,  // 8: xray.transport.internet.SocketConfig.tproxy:type_name -> xray.transport.internet.SocketConfig.TProxyMode
-	0,  // 9: xray.transport.internet.SocketConfig.domain_strategy:type_name -> xray.transport.internet.DomainStrategy
-	6,  // 10: xray.transport.internet.SocketConfig.customSockopt:type_name -> xray.transport.internet.CustomSockopt
-	1,  // 11: xray.transport.internet.SocketConfig.address_port_strategy:type_name -> xray.transport.internet.AddressPortStrategy
-	8,  // 12: xray.transport.internet.SocketConfig.happy_eyeballs:type_name -> xray.transport.internet.HappyEyeballsConfig
-	13, // [13:13] is the sub-list for method output_type
-	13, // [13:13] is the sub-list for method input_type
-	13, // [13:13] is the sub-list for extension type_name
-	13, // [13:13] is the sub-list for extension extendee
-	0,  // [0:13] is the sub-list for field type_name
+	9,  // 6: xray.transport.internet.StreamConfig.tcp4masks:type_name -> xray.common.serial.TypedMessage
+	9,  // 7: xray.transport.internet.StreamConfig.tcp6masks:type_name -> xray.common.serial.TypedMessage
+	9,  // 8: xray.transport.internet.StreamConfig.udp4masks:type_name -> xray.common.serial.TypedMessage
+	9,  // 9: xray.transport.internet.StreamConfig.udp6masks:type_name -> xray.common.serial.TypedMessage
+	5,  // 10: xray.transport.internet.StreamConfig.quic_params:type_name -> xray.transport.internet.QuicParams
+	7,  // 11: xray.transport.internet.StreamConfig.socket_settings:type_name -> xray.transport.internet.SocketConfig
+	2,  // 12: xray.transport.internet.SocketConfig.tproxy:type_name -> xray.transport.internet.SocketConfig.TProxyMode
+	0,  // 13: xray.transport.internet.SocketConfig.domain_strategy:type_name -> xray.transport.internet.DomainStrategy
+	6,  // 14: xray.transport.internet.SocketConfig.customSockopt:type_name -> xray.transport.internet.CustomSockopt
+	1,  // 15: xray.transport.internet.SocketConfig.address_port_strategy:type_name -> xray.transport.internet.AddressPortStrategy
+	8,  // 16: xray.transport.internet.SocketConfig.happy_eyeballs:type_name -> xray.transport.internet.HappyEyeballsConfig
+	17, // [17:17] is the sub-list for method output_type
+	17, // [17:17] is the sub-list for method input_type
+	17, // [17:17] is the sub-list for extension type_name
+	17, // [17:17] is the sub-list for extension extendee
+	0,  // [0:17] is the sub-list for field type_name
 }
 
 func init() { file_transport_internet_config_proto_init() }

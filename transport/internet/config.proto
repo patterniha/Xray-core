@@ -59,6 +59,14 @@ message StreamConfig {
   repeated xray.common.serial.TypedMessage udpmasks = 10;
   repeated xray.common.serial.TypedMessage tcpmasks = 11;
 
+  // Family-specific outbound masks: applied (in place of the generic tcpmasks/
+  // udpmasks) only when the dialed connection's remote IP is of that family.
+  // Mutually exclusive with the generic list of the same protocol.
+  repeated xray.common.serial.TypedMessage tcp4masks = 13;
+  repeated xray.common.serial.TypedMessage tcp6masks = 14;
+  repeated xray.common.serial.TypedMessage udp4masks = 15;
+  repeated xray.common.serial.TypedMessage udp6masks = 16;
+
   QuicParams quic_params = 12;
 
   SocketConfig socket_settings = 6;
