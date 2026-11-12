@@ -88,4 +88,9 @@ message Config {
   repeated bytes pinned_peer_cert_sha256 = 22;
 
   bool use_system_ca = 23;
+
+  // TlsHandshakeTimeout bounds the TLS handshake, in milliseconds. 0 or unset
+  // keeps the default (unbounded); a positive value applies to uTLS and native
+  // Go TLS alike.
+  int32 tls_handshake_timeout = 24;
 }

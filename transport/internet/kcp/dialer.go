@@ -77,6 +77,14 @@ func DialKCP(ctx context.Context, dest net.Destination, streamSettings *internet
 
 	if config := tls.ConfigFromStreamSettings(streamSettings); config != nil {
 		iConn = tls.Client(iConn, config.GetTLSConfig(tls.WithDestination(dest)))
+		if d := config.HandshakeTimeout(); d > 0 { // native TLS handshakes lazily; bound it eagerly when requested
+			hctx, cancel := context.WithTimeout(ctx, d)
+			defer cancel()
+			if err := iConn.(*tls.Conn).HandshakeContext(hctx); err != nil {
+				iConn.Close()
+				return nil, errors.New("failed to complete TLS handshake").Base(err)
+			}
+		}
 	}
 
 	return iConn, nil

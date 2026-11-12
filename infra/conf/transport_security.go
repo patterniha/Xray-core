@@ -317,6 +317,7 @@ type TLSConfig struct {
 	ECHConfigList           string           `json:"echConfigList"`
 	ECHSocketSettings       *SocketConfig    `json:"echSockopt"`
 	UseSystemCA             bool             `json:"useSystemCA"`
+	TLSHandshakeTimeout     int32            `json:"tlsHandshakeTimeout"`
 }
 
 // Build implements Buildable.
@@ -405,6 +406,10 @@ func (c *TLSConfig) Build() (proto.Message, error) {
 		config.EchSocketSettings = ss
 	}
 	config.UseSystemCa = c.UseSystemCA
+	if c.TLSHandshakeTimeout < 0 {
+		return nil, errors.New(`"tlsHandshakeTimeout" can't be negative`)
+	}
+	config.TlsHandshakeTimeout = c.TLSHandshakeTimeout
 
 	return config, nil
 }

@@ -209,7 +209,11 @@ func newServiceClient(connCtx context.Context, h1Hosts *sync.Map, streamSettings
 		}
 		// the dial outlives the request that started it, and a handshake that hangs
 		// would keep the one connection of the host to itself
-		ctx, cancel := context.WithTimeout(ctx, stall)
+		hto := stall
+		if d := tlsConfig.HandshakeTimeout(); d > 0 {
+			hto = d
+		}
+		ctx, cancel := context.WithTimeout(ctx, hto)
 		defer cancel()
 		if err := tlsConn.(tls.Interface).HandshakeContext(ctx); err != nil {
 			conn.Close()

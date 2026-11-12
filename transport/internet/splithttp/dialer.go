@@ -132,13 +132,20 @@ func createHTTPClient(dest net.Destination, streamSettings *internet.MemoryStrea
 		}
 
 		if gotlsConfig != nil {
+			hctx, hcancel := tls.HandshakeTimeoutContext(ctxInner, tlsConfig.HandshakeTimeout())
+			defer hcancel()
 			if fingerprint := tls.GetFingerprint(tlsConfig.Fingerprint); fingerprint != nil {
 				conn = tls.UClient(conn, gotlsConfig, fingerprint)
-				if err := conn.(*tls.UConn).HandshakeContext(ctxInner); err != nil {
+				if err := conn.(*tls.UConn).HandshakeContext(hctx); err != nil {
 					return nil, err
 				}
 			} else {
 				conn = tls.Client(conn, gotlsConfig)
+				if tlsConfig.HandshakeTimeout() > 0 { // native TLS handshakes lazily; bound it eagerly when requested
+					if err := conn.(*tls.Conn).HandshakeContext(hctx); err != nil {
+						return nil, err
+					}
+				}
 			}
 		}
 

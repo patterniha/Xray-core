@@ -70,16 +70,18 @@ func Dial(ctx context.Context, dest net.Destination, streamSettings *internet.Me
 				tlsConfig.NextProtos = []string{"h2", "http/1.1"}
 			}
 		}
+		hctx, hcancel := tls.HandshakeTimeoutContext(ctx, config.HandshakeTimeout())
+		defer hcancel()
 		if fingerprint := tls.GetFingerprint(config.Fingerprint); fingerprint != nil {
 			conn = tls.UClient(conn, tlsConfig, fingerprint)
 			if len(tlsConfig.NextProtos) == 1 && tlsConfig.NextProtos[0] == "http/1.1" { // allow manually specify
-				err = conn.(*tls.UConn).WebsocketHandshakeContext(ctx)
+				err = conn.(*tls.UConn).WebsocketHandshakeContext(hctx)
 			} else {
-				err = conn.(*tls.UConn).HandshakeContext(ctx)
+				err = conn.(*tls.UConn).HandshakeContext(hctx)
 			}
 		} else {
 			conn = tls.Client(conn, tlsConfig)
-			err = conn.(*tls.Conn).HandshakeContext(ctx)
+			err = conn.(*tls.Conn).HandshakeContext(hctx)
 		}
 		if err != nil {
 			if isFromMitmVerify {

@@ -81,6 +81,24 @@ func Server(c net.Conn, config *tls.Config) net.Conn {
 	return &Conn{Conn: tlsConn}
 }
 
+// HandshakeTimeout returns the configured TLS handshake deadline, or 0 (no bound) when unset.
+func (c *Config) HandshakeTimeout() time.Duration {
+	if c == nil || c.TlsHandshakeTimeout <= 0 {
+		return 0
+	}
+	return time.Duration(c.TlsHandshakeTimeout) * time.Millisecond
+}
+
+// HandshakeTimeoutContext derives a context that bounds the TLS handshake to d when d > 0,
+// applying to both uTLS and native Go TLS (both honor context cancellation during the
+// handshake). The returned cancel is always safe to call.
+func HandshakeTimeoutContext(ctx context.Context, d time.Duration) (context.Context, context.CancelFunc) {
+	if d <= 0 {
+		return ctx, func() {}
+	}
+	return context.WithTimeout(ctx, d)
+}
+
 type UConn struct {
 	*utls.UConn
 	suppressCloseNotify atomic.Bool

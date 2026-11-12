@@ -174,7 +174,9 @@ func dialHTTP2(ctx context.Context, dest net.Destination, streamSettings *intern
 		conn = tls.Client(conn, gotlsConfig)
 	}
 	tlsConn := conn.(tls.Interface)
-	if err := tlsConn.HandshakeContext(ctx); err != nil {
+	hctx, hcancel := tls.HandshakeTimeoutContext(ctx, tlsConfig.HandshakeTimeout())
+	defer hcancel()
+	if err := tlsConn.HandshakeContext(hctx); err != nil {
 		conn.Close()
 		return nil, err
 	}
