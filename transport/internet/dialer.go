@@ -248,6 +248,10 @@ func DialSystem(ctx context.Context, dest net.Destination, sockopt *SocketConfig
 		dest = *newDest
 	}
 
+	// Preserve the target (domain kept) for sockopt.Fallback, before the IP
+	// resolution below overwrites dest.Address; the fallback outbound resolves it.
+	fallbackDest := dest
+
 	if sockopt.DomainStrategy.HasStrategy() && dest.Address.Family().IsDomain() {
 		finalStrategy := sockopt.DomainStrategy
 		if outboundName == "freedom" && dest.Network == net.Network_UDP && origTargetAddr != nil && src == nil {
@@ -257,13 +261,22 @@ func DialSystem(ctx context.Context, dest net.Destination, sockopt *SocketConfig
 		if err != nil {
 			errors.LogErrorInner(ctx, err, "failed to resolve ip")
 			if sockopt.DomainStrategy.ForceIP() {
+				// ForceIP but no IP resolved: optionally reach the domain through
+				// an outbound that can resolve/route it itself.
+				if sockopt.Fallback != nil && sockopt.Fallback.NoIpFallbackDialerProxy != "" {
+					return dialThroughFallbackTag(ctx, fallbackDest, sockopt.Fallback.NoIpFallbackDialerProxy, err)
+				}
 				return nil, err
 			}
 		} else if sockopt.HappyEyeballs == nil || sockopt.HappyEyeballs.TryDelayMs == 0 || sockopt.HappyEyeballs.MaxConcurrentTry == 0 || len(ips) < 2 || len(sockopt.DialerProxy) > 0 || dest.Network != net.Network_TCP {
 			dest.Address = net.IPAddress(ips[dice.Roll(len(ips))])
 			errors.LogInfo(ctx, "replace destination with "+dest.String())
 		} else {
-			return TcpRaceDial(ctx, src, ips, dest.Port, sockopt, dest.Address.String())
+			conn, err := TcpRaceDial(ctx, src, ips, dest.Port, sockopt, dest.Address.String())
+			if err == nil {
+				conn = applyResponseFallback(ctx, fallbackDest, sockopt, conn)
+			}
+			return dialSystemFallback(ctx, fallbackDest, sockopt, conn, err)
 		}
 	}
 
@@ -278,7 +291,53 @@ func DialSystem(ctx context.Context, dest net.Destination, sockopt *SocketConfig
 		return redirect(ctx, dest, sockopt.DialerProxy, h), nil
 	}
 
-	return effectiveSystemDialer.Dial(ctx, src, dest, sockopt)
+	conn, err := effectiveSystemDialer.Dial(ctx, src, dest, sockopt)
+	if err == nil {
+		conn = applyResponseFallback(ctx, fallbackDest, sockopt, conn)
+	}
+	return dialSystemFallback(ctx, fallbackDest, sockopt, conn, err)
+}
+
+// DialThroughOutbound dials dest through the outbound handler registered under
+// tag, reusing the same redirect machinery as sockopt.DialerProxy. The returned
+// connection relays to dest via that outbound's own protocol/stream settings.
+// Used by freedom's fallback to retry a request through another outbound.
+func DialThroughOutbound(ctx context.Context, dest net.Destination, tag string) (net.Conn, error) {
+	if obm == nil {
+		return nil, errors.New("there is no outbound manager for fallback")
+	}
+	h := obm.GetHandler(tag)
+	if h == nil {
+		return nil, errors.New("there is no outbound handler for fallback: ", tag)
+	}
+	return redirect(ctx, dest, tag, h), nil
+}
+
+// dialThroughFallbackTag reaches dest through the outbound registered under tag,
+// reusing the dialer_proxy redirect machinery. cause (what triggered the
+// fallback) is chained into any error. Shared by the sockopt.Fallback paths.
+func dialThroughFallbackTag(ctx context.Context, dest net.Destination, tag string, cause error) (net.Conn, error) {
+	if obm == nil {
+		return nil, errors.New("there is no outbound manager for sockopt.fallback").Base(cause)
+	}
+	h := obm.GetHandler(tag)
+	if h == nil {
+		return nil, errors.New("there is no outbound handler for sockopt.fallback tag: ", tag).Base(cause)
+	}
+	errors.LogInfo(ctx, "sockopt.fallback: reaching ", dest, " through ", tag, " after: ", cause)
+	return redirect(ctx, dest, tag, h), nil
+}
+
+// dialSystemFallback applies sockopt.Fallback.FailedDialFallbackDialerProxy. When
+// a direct system dial has failed (the TCP handshake failed, or every Happy
+// Eyeballs attempt did), it reaches dest through that outbound instead of
+// returning the error. With no fallback configured, or on a successful dial, it
+// returns (conn, err) unchanged.
+func dialSystemFallback(ctx context.Context, dest net.Destination, sockopt *SocketConfig, conn net.Conn, err error) (net.Conn, error) {
+	if err == nil || sockopt == nil || sockopt.Fallback == nil || sockopt.Fallback.FailedDialFallbackDialerProxy == "" {
+		return conn, err
+	}
+	return dialThroughFallbackTag(ctx, dest, sockopt.Fallback.FailedDialFallbackDialerProxy, err)
 }
 
 func InitSystemDialer(dc dns.Client, om outbound.Manager) {

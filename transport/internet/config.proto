@@ -170,6 +170,34 @@ message SocketConfig {
   // TcpHandshakeTimeout is the deadline for the TCP connect, in milliseconds.
   // 0 or unset keeps the default (16s); a positive value overrides it.
   int32 tcp_handshake_timeout = 26;
+
+  reserved 27; // was fallback_dialer_proxy; folded into fallback below
+
+  // Fallback groups the dial-level retry outbounds: one for when the direct dial
+  // fails, one for when it succeeds but the target never responds. Nil disables both.
+  FallbackConfig fallback = 28;
+}
+
+message FallbackConfig {
+  // Outbound tag to reach the destination through when the direct system dial
+  // fails (the TCP handshake fails, or, with Happy Eyeballs, every IP attempt
+  // fails). Unlike dialer_proxy it does not replace the direct dial; it is used
+  // only after the direct dial has failed. Empty disables this fallback.
+  string failed_dial_fallback_dialer_proxy = 1;
+  // Outbound tag to replay the request through when the dial succeeds but the
+  // target sends no byte before the connection ends (FIN/RST/error) or wait_ms
+  // elapses. Empty disables this fallback.
+  string no_response_fallback_dialer_proxy = 2;
+  // Outbound tag to reach the destination through when a ForceIP domain_strategy
+  // resolves no IP for the target (DNS failed or returned empty). The fallback
+  // outbound resolves/routes the domain itself. Empty disables this fallback.
+  string no_ip_fallback_dialer_proxy = 3;
+  // Maximum request bytes to buffer for the no-response replay (0 = default
+  // 16 KiB). A request larger than this disarms the no-response fallback.
+  int32 max_buffer_size = 4;
+  // No-response fallback timer in milliseconds, measured from connect; 0 means
+  // only on FIN/RST/error.
+  int32 wait_ms = 5;
 }
 
 message HappyEyeballsConfig {

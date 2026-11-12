@@ -9,6 +9,14 @@ import (
 	"github.com/xtls/xray-core/transport/internet"
 )
 
+type SockoptFallback struct {
+	FailedDialFallbackDialerProxy string `json:"failedDialFallbackDialerProxy"`
+	NoResponseFallbackDialerProxy string `json:"noResponseFallbackDialerProxy"`
+	NoIPFallbackDialerProxy       string `json:"noIPFallbackDialerProxy"`
+	MaxBufferSize                 int32  `json:"maxBufferSize"`
+	WaitMs                        int32  `json:"waitMs"`
+}
+
 type CustomSockoptConfig struct {
 	System  string `json:"system"`
 	Network string `json:"network"`
@@ -49,6 +57,7 @@ type SocketConfig struct {
 	AcceptProxyProtocol   bool                   `json:"acceptProxyProtocol"`
 	DomainStrategy        string                 `json:"domainStrategy"`
 	DialerProxy           string                 `json:"dialerProxy"`
+	Fallback              *SockoptFallback       `json:"fallback"`
 	TCPKeepAliveInterval  int32                  `json:"tcpKeepAliveInterval"`
 	TCPKeepAliveIdle      int32                  `json:"tcpKeepAliveIdle"`
 	TCPKeepAliveCount     int32                  `json:"tcpKeepAliveCount"`
@@ -165,6 +174,26 @@ func (c *SocketConfig) Build() (*internet.SocketConfig, error) {
 		happyEyeballs.MaxConcurrentTry = c.HappyEyeballsSettings.MaxConcurrentTry
 	}
 
+	var fallback *internet.FallbackConfig
+	if c.Fallback != nil {
+		if c.Fallback.FailedDialFallbackDialerProxy == "" && c.Fallback.NoResponseFallbackDialerProxy == "" && c.Fallback.NoIPFallbackDialerProxy == "" {
+			return nil, errors.New(`"sockopt.fallback" needs at least one of "failedDialFallbackDialerProxy", "noResponseFallbackDialerProxy", "noIPFallbackDialerProxy"`)
+		}
+		if c.Fallback.MaxBufferSize < 0 {
+			return nil, errors.New(`"sockopt.fallback.maxBufferSize" can't be negative`)
+		}
+		if c.Fallback.WaitMs < 0 {
+			return nil, errors.New(`"sockopt.fallback.waitMs" can't be negative`)
+		}
+		fallback = &internet.FallbackConfig{
+			FailedDialFallbackDialerProxy: c.Fallback.FailedDialFallbackDialerProxy,
+			NoResponseFallbackDialerProxy: c.Fallback.NoResponseFallbackDialerProxy,
+			NoIpFallbackDialerProxy:       c.Fallback.NoIPFallbackDialerProxy,
+			MaxBufferSize:                 c.Fallback.MaxBufferSize,
+			WaitMs:                        c.Fallback.WaitMs,
+		}
+	}
+
 	return &internet.SocketConfig{
 		Mark:                 c.Mark,
 		Tfo:                  tfo,
@@ -172,6 +201,7 @@ func (c *SocketConfig) Build() (*internet.SocketConfig, error) {
 		DomainStrategy:       dStrategy,
 		AcceptProxyProtocol:  c.AcceptProxyProtocol,
 		DialerProxy:          c.DialerProxy,
+		Fallback:             fallback,
 		TcpKeepAliveInterval: c.TCPKeepAliveInterval,
 		TcpKeepAliveIdle:     c.TCPKeepAliveIdle,
 		TcpKeepAliveCount:    c.TCPKeepAliveCount,

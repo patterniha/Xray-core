@@ -704,8 +704,11 @@ type SocketConfig struct {
 	// TcpHandshakeTimeout is the deadline for the TCP connect, in milliseconds.
 	// 0 or unset keeps the default (16s); a positive value overrides it.
 	TcpHandshakeTimeout int32 `protobuf:"varint,26,opt,name=tcp_handshake_timeout,json=tcpHandshakeTimeout,proto3" json:"tcp_handshake_timeout,omitempty"`
-	unknownFields       protoimpl.UnknownFields
-	sizeCache           protoimpl.SizeCache
+	// Fallback groups the dial-level retry outbounds: one for when the direct dial
+	// fails, one for when it succeeds but the target never responds. Nil disables both.
+	Fallback      *FallbackConfig `protobuf:"bytes,28,opt,name=fallback,proto3" json:"fallback,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
 }
 
 func (x *SocketConfig) Reset() {
@@ -906,6 +909,103 @@ func (x *SocketConfig) GetTcpHandshakeTimeout() int32 {
 	return 0
 }
 
+func (x *SocketConfig) GetFallback() *FallbackConfig {
+	if x != nil {
+		return x.Fallback
+	}
+	return nil
+}
+
+type FallbackConfig struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// Outbound tag to reach the destination through when the direct system dial
+	// fails (the TCP handshake fails, or, with Happy Eyeballs, every IP attempt
+	// fails). Unlike dialer_proxy it does not replace the direct dial; it is used
+	// only after the direct dial has failed. Empty disables this fallback.
+	FailedDialFallbackDialerProxy string `protobuf:"bytes,1,opt,name=failed_dial_fallback_dialer_proxy,json=failedDialFallbackDialerProxy,proto3" json:"failed_dial_fallback_dialer_proxy,omitempty"`
+	// Outbound tag to replay the request through when the dial succeeds but the
+	// target sends no byte before the connection ends (FIN/RST/error) or wait_ms
+	// elapses. Empty disables this fallback.
+	NoResponseFallbackDialerProxy string `protobuf:"bytes,2,opt,name=no_response_fallback_dialer_proxy,json=noResponseFallbackDialerProxy,proto3" json:"no_response_fallback_dialer_proxy,omitempty"`
+	// Outbound tag to reach the destination through when a ForceIP domain_strategy
+	// resolves no IP for the target (DNS failed or returned empty). The fallback
+	// outbound resolves/routes the domain itself. Empty disables this fallback.
+	NoIpFallbackDialerProxy string `protobuf:"bytes,3,opt,name=no_ip_fallback_dialer_proxy,json=noIpFallbackDialerProxy,proto3" json:"no_ip_fallback_dialer_proxy,omitempty"`
+	// Maximum request bytes to buffer for the no-response replay (0 = default
+	// 16 KiB). A request larger than this disarms the no-response fallback.
+	MaxBufferSize int32 `protobuf:"varint,4,opt,name=max_buffer_size,json=maxBufferSize,proto3" json:"max_buffer_size,omitempty"`
+	// No-response fallback timer in milliseconds, measured from connect; 0 means
+	// only on FIN/RST/error.
+	WaitMs        int32 `protobuf:"varint,5,opt,name=wait_ms,json=waitMs,proto3" json:"wait_ms,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *FallbackConfig) Reset() {
+	*x = FallbackConfig{}
+	mi := &file_transport_internet_config_proto_msgTypes[5]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *FallbackConfig) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*FallbackConfig) ProtoMessage() {}
+
+func (x *FallbackConfig) ProtoReflect() protoreflect.Message {
+	mi := &file_transport_internet_config_proto_msgTypes[5]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use FallbackConfig.ProtoReflect.Descriptor instead.
+func (*FallbackConfig) Descriptor() ([]byte, []int) {
+	return file_transport_internet_config_proto_rawDescGZIP(), []int{5}
+}
+
+func (x *FallbackConfig) GetFailedDialFallbackDialerProxy() string {
+	if x != nil {
+		return x.FailedDialFallbackDialerProxy
+	}
+	return ""
+}
+
+func (x *FallbackConfig) GetNoResponseFallbackDialerProxy() string {
+	if x != nil {
+		return x.NoResponseFallbackDialerProxy
+	}
+	return ""
+}
+
+func (x *FallbackConfig) GetNoIpFallbackDialerProxy() string {
+	if x != nil {
+		return x.NoIpFallbackDialerProxy
+	}
+	return ""
+}
+
+func (x *FallbackConfig) GetMaxBufferSize() int32 {
+	if x != nil {
+		return x.MaxBufferSize
+	}
+	return 0
+}
+
+func (x *FallbackConfig) GetWaitMs() int32 {
+	if x != nil {
+		return x.WaitMs
+	}
+	return 0
+}
+
 type HappyEyeballsConfig struct {
 	state            protoimpl.MessageState `protogen:"open.v1"`
 	PrioritizeIpv6   bool                   `protobuf:"varint,1,opt,name=prioritize_ipv6,json=prioritizeIpv6,proto3" json:"prioritize_ipv6,omitempty"`
@@ -918,7 +1018,7 @@ type HappyEyeballsConfig struct {
 
 func (x *HappyEyeballsConfig) Reset() {
 	*x = HappyEyeballsConfig{}
-	mi := &file_transport_internet_config_proto_msgTypes[5]
+	mi := &file_transport_internet_config_proto_msgTypes[6]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -930,7 +1030,7 @@ func (x *HappyEyeballsConfig) String() string {
 func (*HappyEyeballsConfig) ProtoMessage() {}
 
 func (x *HappyEyeballsConfig) ProtoReflect() protoreflect.Message {
-	mi := &file_transport_internet_config_proto_msgTypes[5]
+	mi := &file_transport_internet_config_proto_msgTypes[6]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -943,7 +1043,7 @@ func (x *HappyEyeballsConfig) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use HappyEyeballsConfig.ProtoReflect.Descriptor instead.
 func (*HappyEyeballsConfig) Descriptor() ([]byte, []int) {
-	return file_transport_internet_config_proto_rawDescGZIP(), []int{5}
+	return file_transport_internet_config_proto_rawDescGZIP(), []int{6}
 }
 
 func (x *HappyEyeballsConfig) GetPrioritizeIpv6() bool {
@@ -1030,7 +1130,8 @@ const file_transport_internet_config_proto_rawDesc = "" +
 	"\x05level\x18\x03 \x01(\tR\x05level\x12\x10\n" +
 	"\x03opt\x18\x04 \x01(\tR\x03opt\x12\x14\n" +
 	"\x05value\x18\x05 \x01(\tR\x05value\x12\x12\n" +
-	"\x04type\x18\x06 \x01(\tR\x04type\"\xcb\t\n" +
+	"\x04type\x18\x06 \x01(\tR\x04type\"\x96\n" +
+	"\n" +
 	"\fSocketConfig\x12\x12\n" +
 	"\x04mark\x18\x01 \x01(\x05R\x04mark\x12\x10\n" +
 	"\x03tfo\x18\x02 \x01(\x05R\x03tfo\x12H\n" +
@@ -1056,13 +1157,20 @@ const file_transport_internet_config_proto_rawDesc = "" +
 	"\x17trusted_x_forwarded_for\x18\x17 \x03(\tR\x14trustedXForwardedFor\x12\x1b\n" +
 	"\tdial_mode\x18\x18 \x01(\tR\bdialMode\x12/\n" +
 	"\x14tcp_keep_alive_count\x18\x19 \x01(\x05R\x11tcpKeepAliveCount\x122\n" +
-	"\x15tcp_handshake_timeout\x18\x1a \x01(\x05R\x13tcpHandshakeTimeout\"/\n" +
+	"\x15tcp_handshake_timeout\x18\x1a \x01(\x05R\x13tcpHandshakeTimeout\x12C\n" +
+	"\bfallback\x18\x1c \x01(\v2'.xray.transport.internet.FallbackConfigR\bfallback\"/\n" +
 	"\n" +
 	"TProxyMode\x12\a\n" +
 	"\x03Off\x10\x00\x12\n" +
 	"\n" +
 	"\x06TProxy\x10\x01\x12\f\n" +
-	"\bRedirect\x10\x02\"\xad\x01\n" +
+	"\bRedirect\x10\x02J\x04\b\x1b\x10\x1c\"\xa3\x02\n" +
+	"\x0eFallbackConfig\x12H\n" +
+	"!failed_dial_fallback_dialer_proxy\x18\x01 \x01(\tR\x1dfailedDialFallbackDialerProxy\x12H\n" +
+	"!no_response_fallback_dialer_proxy\x18\x02 \x01(\tR\x1dnoResponseFallbackDialerProxy\x12<\n" +
+	"\x1bno_ip_fallback_dialer_proxy\x18\x03 \x01(\tR\x17noIpFallbackDialerProxy\x12&\n" +
+	"\x0fmax_buffer_size\x18\x04 \x01(\x05R\rmaxBufferSize\x12\x17\n" +
+	"\await_ms\x18\x05 \x01(\x05R\x06waitMs\"\xad\x01\n" +
 	"\x13HappyEyeballsConfig\x12'\n" +
 	"\x0fprioritize_ipv6\x18\x01 \x01(\bR\x0eprioritizeIpv6\x12\x1e\n" +
 	"\n" +
@@ -1110,7 +1218,7 @@ func file_transport_internet_config_proto_rawDescGZIP() []byte {
 }
 
 var file_transport_internet_config_proto_enumTypes = make([]protoimpl.EnumInfo, 3)
-var file_transport_internet_config_proto_msgTypes = make([]protoimpl.MessageInfo, 6)
+var file_transport_internet_config_proto_msgTypes = make([]protoimpl.MessageInfo, 7)
 var file_transport_internet_config_proto_goTypes = []any{
 	(DomainStrategy)(0),          // 0: xray.transport.internet.DomainStrategy
 	(AddressPortStrategy)(0),     // 1: xray.transport.internet.AddressPortStrategy
@@ -1120,33 +1228,35 @@ var file_transport_internet_config_proto_goTypes = []any{
 	(*QuicParams)(nil),           // 5: xray.transport.internet.QuicParams
 	(*CustomSockopt)(nil),        // 6: xray.transport.internet.CustomSockopt
 	(*SocketConfig)(nil),         // 7: xray.transport.internet.SocketConfig
-	(*HappyEyeballsConfig)(nil),  // 8: xray.transport.internet.HappyEyeballsConfig
-	(*serial.TypedMessage)(nil),  // 9: xray.common.serial.TypedMessage
-	(*net.IPOrDomain)(nil),       // 10: xray.common.net.IPOrDomain
+	(*FallbackConfig)(nil),       // 8: xray.transport.internet.FallbackConfig
+	(*HappyEyeballsConfig)(nil),  // 9: xray.transport.internet.HappyEyeballsConfig
+	(*serial.TypedMessage)(nil),  // 10: xray.common.serial.TypedMessage
+	(*net.IPOrDomain)(nil),       // 11: xray.common.net.IPOrDomain
 }
 var file_transport_internet_config_proto_depIdxs = []int32{
-	9,  // 0: xray.transport.internet.TransportConfig.settings:type_name -> xray.common.serial.TypedMessage
-	10, // 1: xray.transport.internet.StreamConfig.address:type_name -> xray.common.net.IPOrDomain
+	10, // 0: xray.transport.internet.TransportConfig.settings:type_name -> xray.common.serial.TypedMessage
+	11, // 1: xray.transport.internet.StreamConfig.address:type_name -> xray.common.net.IPOrDomain
 	3,  // 2: xray.transport.internet.StreamConfig.transport_settings:type_name -> xray.transport.internet.TransportConfig
-	9,  // 3: xray.transport.internet.StreamConfig.security_settings:type_name -> xray.common.serial.TypedMessage
-	9,  // 4: xray.transport.internet.StreamConfig.udpmasks:type_name -> xray.common.serial.TypedMessage
-	9,  // 5: xray.transport.internet.StreamConfig.tcpmasks:type_name -> xray.common.serial.TypedMessage
-	9,  // 6: xray.transport.internet.StreamConfig.tcp4masks:type_name -> xray.common.serial.TypedMessage
-	9,  // 7: xray.transport.internet.StreamConfig.tcp6masks:type_name -> xray.common.serial.TypedMessage
-	9,  // 8: xray.transport.internet.StreamConfig.udp4masks:type_name -> xray.common.serial.TypedMessage
-	9,  // 9: xray.transport.internet.StreamConfig.udp6masks:type_name -> xray.common.serial.TypedMessage
+	10, // 3: xray.transport.internet.StreamConfig.security_settings:type_name -> xray.common.serial.TypedMessage
+	10, // 4: xray.transport.internet.StreamConfig.udpmasks:type_name -> xray.common.serial.TypedMessage
+	10, // 5: xray.transport.internet.StreamConfig.tcpmasks:type_name -> xray.common.serial.TypedMessage
+	10, // 6: xray.transport.internet.StreamConfig.tcp4masks:type_name -> xray.common.serial.TypedMessage
+	10, // 7: xray.transport.internet.StreamConfig.tcp6masks:type_name -> xray.common.serial.TypedMessage
+	10, // 8: xray.transport.internet.StreamConfig.udp4masks:type_name -> xray.common.serial.TypedMessage
+	10, // 9: xray.transport.internet.StreamConfig.udp6masks:type_name -> xray.common.serial.TypedMessage
 	5,  // 10: xray.transport.internet.StreamConfig.quic_params:type_name -> xray.transport.internet.QuicParams
 	7,  // 11: xray.transport.internet.StreamConfig.socket_settings:type_name -> xray.transport.internet.SocketConfig
 	2,  // 12: xray.transport.internet.SocketConfig.tproxy:type_name -> xray.transport.internet.SocketConfig.TProxyMode
 	0,  // 13: xray.transport.internet.SocketConfig.domain_strategy:type_name -> xray.transport.internet.DomainStrategy
 	6,  // 14: xray.transport.internet.SocketConfig.customSockopt:type_name -> xray.transport.internet.CustomSockopt
 	1,  // 15: xray.transport.internet.SocketConfig.address_port_strategy:type_name -> xray.transport.internet.AddressPortStrategy
-	8,  // 16: xray.transport.internet.SocketConfig.happy_eyeballs:type_name -> xray.transport.internet.HappyEyeballsConfig
-	17, // [17:17] is the sub-list for method output_type
-	17, // [17:17] is the sub-list for method input_type
-	17, // [17:17] is the sub-list for extension type_name
-	17, // [17:17] is the sub-list for extension extendee
-	0,  // [0:17] is the sub-list for field type_name
+	9,  // 16: xray.transport.internet.SocketConfig.happy_eyeballs:type_name -> xray.transport.internet.HappyEyeballsConfig
+	8,  // 17: xray.transport.internet.SocketConfig.fallback:type_name -> xray.transport.internet.FallbackConfig
+	18, // [18:18] is the sub-list for method output_type
+	18, // [18:18] is the sub-list for method input_type
+	18, // [18:18] is the sub-list for extension type_name
+	18, // [18:18] is the sub-list for extension extendee
+	0,  // [0:18] is the sub-list for field type_name
 }
 
 func init() { file_transport_internet_config_proto_init() }
@@ -1160,7 +1270,7 @@ func file_transport_internet_config_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_transport_internet_config_proto_rawDesc), len(file_transport_internet_config_proto_rawDesc)),
 			NumEnums:      3,
-			NumMessages:   6,
+			NumMessages:   7,
 			NumExtensions: 0,
 			NumServices:   0,
 		},
