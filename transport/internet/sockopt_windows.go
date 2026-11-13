@@ -33,6 +33,13 @@ var tcpMaxRtSupported = sync.OnceValue(func() bool {
 	return build >= 9200
 })
 
+// tcpMaxRtMs is the TCP_MAXRTMS value for a tcpUserTimeout of ms milliseconds.
+// Windows refuses anything below 20 (WSAEINVAL), so 1-19 are raised to 20, the
+// shortest timeout it takes.
+func tcpMaxRtMs(ms int32) int {
+	return max(int(ms), 20)
+}
+
 const (
 	TCP_FASTOPEN    = 15
 	IP_UNICAST_IF   = 31
@@ -105,7 +112,7 @@ func applyOutboundSocketOptions(network string, address string, fd uintptr, conf
 			// TCP_USER_TIMEOUT: abort the connection after this long with
 			// unacknowledged data. Skipped (OS default) on builds older than
 			// Windows 8 / Server 2012.
-			if err := syscall.SetsockoptInt(syscall.Handle(fd), syscall.IPPROTO_TCP, windows.TCP_MAXRTMS, int(config.TcpUserTimeout)); err != nil {
+			if err := syscall.SetsockoptInt(syscall.Handle(fd), syscall.IPPROTO_TCP, windows.TCP_MAXRTMS, tcpMaxRtMs(config.TcpUserTimeout)); err != nil {
 				return errors.New("failed to set TCP_MAXRTMS", err)
 			}
 		}
@@ -190,7 +197,7 @@ func applyInboundSocketOptions(network string, fd uintptr, config *SocketConfig)
 			// TCP_USER_TIMEOUT: abort the connection after this long with
 			// unacknowledged data. Skipped (OS default) on builds older than
 			// Windows 8 / Server 2012.
-			if err := syscall.SetsockoptInt(syscall.Handle(fd), syscall.IPPROTO_TCP, windows.TCP_MAXRTMS, int(config.TcpUserTimeout)); err != nil {
+			if err := syscall.SetsockoptInt(syscall.Handle(fd), syscall.IPPROTO_TCP, windows.TCP_MAXRTMS, tcpMaxRtMs(config.TcpUserTimeout)); err != nil {
 				return errors.New("failed to set TCP_MAXRTMS", err)
 			}
 		}
