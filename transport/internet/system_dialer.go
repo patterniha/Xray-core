@@ -4,7 +4,6 @@ import (
 	"context"
 	go_errors "errors"
 	"runtime"
-	"strings"
 	"sync"
 	"syscall"
 	"time"
@@ -50,18 +49,16 @@ func resolveSrcAddr(network net.Network, src net.Address) net.Addr {
 }
 
 func (d *DefaultSystemDialer) Dial(ctx context.Context, src net.Address, dest net.Destination, sockopt *SocketConfig) (net.Conn, error) {
-	dialMode := sockopt.GetDialMode()
-	if dialMode != "" {
-		// Each dialMode has a case here, with the code it runs before DialInitial, if any.
-		// Change a copy of sockopt, not sockopt itself: every dial of the outbound shares it.
-		switch {
-		case strings.HasPrefix(dialMode, oobDialModePrefix):
-			if _, err := parseOOBDialMode(dialMode); err != nil {
-				return nil, err
-			}
-		default:
-			return nil, errors.New("unsupported dialMode: ", dialMode)
+	// dialMode is a ";"-separated list of options, parsed (and validated) before the dial.
+	// An option that needs pre-dial changes would change a copy of sockopt, not sockopt
+	// itself, since every dial of the outbound shares it.
+	var dialOpts []oobDialOption
+	if dialMode := sockopt.GetDialMode(); dialMode != "" {
+		opts, err := parseDialMode(dialMode)
+		if err != nil {
+			return nil, err
 		}
+		dialOpts = opts
 	}
 
 	conn, err := d.DialInitial(ctx, src, dest, sockopt)
@@ -69,20 +66,19 @@ func (d *DefaultSystemDialer) Dial(ctx context.Context, src net.Address, dest ne
 		return conn, err
 	}
 
-	if dialMode != "" {
-		// The code each dialMode runs after DialInitial goes here, working on conn.
-		switch {
-		case strings.HasPrefix(dialMode, oobDialModePrefix):
-			// Apply the oob. list to the first writes (append a byte + mark urgent, or leave as is for "_"); UDP is left as is.
-			if dest.Network == net.Network_TCP {
-				steps, _ := parseOOBDialMode(dialMode)
-				conn = newOOBConn(conn, steps)
+	// Apply the oob option for the connection's remote IP family to its first writes
+	// (append a byte + mark urgent, or leave as is for "_"). TCP only; UDP is left as is,
+	// and at most one option matches a given family.
+	if len(dialOpts) > 0 && dest.Network == net.Network_TCP {
+		ipv6 := addrIsIPv6(conn.RemoteAddr())
+		for _, o := range dialOpts {
+			if o.appliesTo(ipv6) {
+				conn = newOOBConn(conn, o.steps)
+				break
 			}
 		}
-		return conn, err
-	} else {
-		return conn, err
 	}
+	return conn, err
 }
 
 func (d *DefaultSystemDialer) DialInitial(ctx context.Context, src net.Address, dest net.Destination, sockopt *SocketConfig) (net.Conn, error) {
