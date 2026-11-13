@@ -115,41 +115,36 @@ func createHTTPClient(dest net.Destination, streamSettings *internet.MemoryStrea
 
 	transportConfig := streamSettings.ProtocolSettings.(*Config)
 
-	dialContext := func(ctxInner context.Context) (net.Conn, error) {
-		var conn net.Conn
-		var err error
-		if streamSettings.FinalMask != nil {
-			conn, err = streamSettings.FinalMask.DialTCP(ctxInner, dest)
-		} else {
-			conn, err = internet.DialSystem(ctxInner, dest, streamSettings.SocketSettings)
-		}
-		if err != nil {
-			return nil, err
-		}
-
-		if realityConfig != nil {
+	var handshake func(context.Context, net.Conn) (net.Conn, error)
+	if realityConfig != nil {
+		handshake = func(ctxInner context.Context, conn net.Conn) (net.Conn, error) {
 			return reality.UClient(conn, realityConfig, ctxInner, dest)
 		}
-
-		if gotlsConfig != nil {
+	} else if gotlsConfig != nil {
+		handshake = func(ctxInner context.Context, conn net.Conn) (net.Conn, error) {
 			hctx, hcancel := tls.HandshakeTimeoutContext(ctxInner, tlsConfig.HandshakeTimeout())
 			defer hcancel()
 			if fingerprint := tls.GetFingerprint(tlsConfig.Fingerprint); fingerprint != nil {
 				conn = tls.UClient(conn, gotlsConfig, fingerprint)
 				if err := conn.(*tls.UConn).HandshakeContext(hctx); err != nil {
+					conn.Close()
 					return nil, err
 				}
 			} else {
 				conn = tls.Client(conn, gotlsConfig)
 				if tlsConfig.HandshakeTimeout() > 0 { // native TLS handshakes lazily; bound it eagerly when requested
 					if err := conn.(*tls.Conn).HandshakeContext(hctx); err != nil {
+						conn.Close()
 						return nil, err
 					}
 				}
 			}
+			return conn, nil
 		}
+	}
 
-		return conn, nil
+	dialContext := func(ctxInner context.Context) (net.Conn, error) {
+		return internet.DialTCPWithHandshake(ctxInner, dest, streamSettings, handshake)
 	}
 
 	var keepAlivePeriod time.Duration

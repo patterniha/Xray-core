@@ -48,42 +48,40 @@ func (c *ConnRF) Read(b []byte) (int, error) {
 func dialhttpUpgrade(ctx context.Context, dest net.Destination, streamSettings *internet.MemoryStreamConfig) (net.Conn, error) {
 	transportConfiguration := streamSettings.ProtocolSettings.(*Config)
 
-	var pconn net.Conn
-	var err error
-	if streamSettings.FinalMask != nil {
-		pconn, err = streamSettings.FinalMask.DialTCP(ctx, dest)
-	} else {
-		pconn, err = internet.DialSystem(ctx, dest, streamSettings.SocketSettings)
-	}
-	if err != nil {
-		errors.LogErrorInner(ctx, err, "failed to dial to ", dest)
-		return nil, err
-	}
-
-	var conn net.Conn
+	var handshake func(context.Context, net.Conn) (net.Conn, error)
 	var requestURL url.URL
 	tConfig := tls.ConfigFromStreamSettings(streamSettings)
 	if tConfig != nil {
 		tlsConfig := tConfig.GetTLSConfig(tls.WithDestination(dest), tls.WithNextProto("http/1.1"))
-		hctx, hcancel := tls.HandshakeTimeoutContext(ctx, tConfig.HandshakeTimeout())
-		defer hcancel()
-		if fingerprint := tls.GetFingerprint(tConfig.Fingerprint); fingerprint != nil {
-			conn = tls.UClient(pconn, tlsConfig, fingerprint)
-			if err := conn.(*tls.UConn).WebsocketHandshakeContext(hctx); err != nil {
-				return nil, err
+		handshake = func(ctx context.Context, pconn net.Conn) (net.Conn, error) {
+			hctx, hcancel := tls.HandshakeTimeoutContext(ctx, tConfig.HandshakeTimeout())
+			defer hcancel()
+			if fingerprint := tls.GetFingerprint(tConfig.Fingerprint); fingerprint != nil {
+				conn := tls.UClient(pconn, tlsConfig, fingerprint)
+				if err := conn.(*tls.UConn).WebsocketHandshakeContext(hctx); err != nil {
+					conn.Close()
+					return nil, err
+				}
+				return conn, nil
 			}
-		} else {
-			conn = tls.Client(pconn, tlsConfig)
+			conn := tls.Client(pconn, tlsConfig)
 			if tConfig.HandshakeTimeout() > 0 { // native TLS handshakes lazily; bound it eagerly when requested
 				if err := conn.(*tls.Conn).HandshakeContext(hctx); err != nil {
+					conn.Close()
 					return nil, err
 				}
 			}
+			return conn, nil
 		}
 		requestURL.Scheme = "https"
 	} else {
-		conn = pconn
 		requestURL.Scheme = "http"
+	}
+
+	conn, err := internet.DialTCPWithHandshake(ctx, dest, streamSettings, handshake)
+	if err != nil {
+		errors.LogErrorInner(ctx, err, "failed to dial to ", dest)
+		return nil, err
 	}
 
 	requestURL.Host = transportConfiguration.Host
