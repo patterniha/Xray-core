@@ -19,6 +19,7 @@ import (
 	xlua "github.com/xtls/xray-core/common/lua"
 	"github.com/xtls/xray-core/common/net"
 	"github.com/xtls/xray-core/transport/internet"
+	"github.com/xtls/xray-core/transport/internet/finalmask/borrow"
 	"github.com/xtls/xray-core/transport/internet/finalmask/filter"
 	"github.com/xtls/xray-core/transport/internet/finalmask/fragment"
 	"github.com/xtls/xray-core/transport/internet/finalmask/header/custom"
@@ -80,6 +81,7 @@ var (
 		"filter":        func() interface{} { return new(Filter) },
 		"header-custom": func() interface{} { return new(HeaderCustomTCP) },
 		"fragment":      func() interface{} { return new(FragmentMask) },
+		"borrow":        func() interface{} { return new(BorrowMask) },
 		"merge":         func() interface{} { return new(MergeMask) },
 		"sudoku":        func() interface{} { return new(Sudoku) },
 		"xmc":           func() interface{} { return new(XMC) },
@@ -320,6 +322,23 @@ func (c *FragmentMask) Build() (proto.Message, error) {
 	config.MaxSplitMax = int64(c.MaxSplit.To)
 
 	return config, nil
+}
+
+type BorrowMask struct {
+	BorrowBytesHex string `json:"borrowBytesHex"`
+}
+
+func (c *BorrowMask) Build() (proto.Message, error) {
+	bb, err := hex.DecodeString(c.BorrowBytesHex)
+	if err != nil {
+		return nil, errors.New("invalid borrowBytesHex").Base(err)
+	}
+	if len(bb) == 0 {
+		return nil, errors.New("borrowBytesHex can't be empty")
+	}
+	return &borrow.Config{
+		BorrowBytes: bb,
+	}, nil
 }
 
 type MergeMask struct {
