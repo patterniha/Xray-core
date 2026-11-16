@@ -119,6 +119,23 @@ func TestBorrowSecondWriteMismatchErrors(t *testing.T) {
 	}
 }
 
+func TestBorrowSecondWriteShorterThanBorrowBytes(t *testing.T) {
+	bb := []byte{0x00, 0x16}
+	client, server := newPair(t, bb)
+
+	go func() {
+		if _, err := client.Write([]byte{0x34, 0x56}); err != nil {
+			t.Error(err)
+		}
+	}()
+	readAll(t, server, 4)
+
+	// Second packet (1 byte) is shorter than borrowBytes (2): must error.
+	if _, err := client.Write([]byte{0x00}); err == nil {
+		t.Fatal("expected error for second packet shorter than borrow bytes")
+	}
+}
+
 func TestBorrowEmptyBytesPassThrough(t *testing.T) {
 	client, server := newPair(t, nil)
 
