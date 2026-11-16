@@ -229,6 +229,38 @@ func TestSocketConfigHappyEyeballsSuccessDefinition(t *testing.T) {
 	}
 }
 
+func TestSocketConfigFallbackPassPrimaryConnAddress(t *testing.T) {
+	parser := func(s string) (proto.Message, error) {
+		config := new(SocketConfig)
+		if err := json.Unmarshal([]byte(s), config); err != nil {
+			return nil, err
+		}
+		return config.Build()
+	}
+	fallback := func(passPrimaryConnAddress bool) *internet.SocketConfig {
+		return &internet.SocketConfig{
+			HappyEyeballs: &internet.HappyEyeballsConfig{Interleave: 1, TryDelayMs: 0, PrioritizeIpv6: false, MaxConcurrentTry: 4},
+			Fallback: &internet.FallbackConfig{
+				NoResponseFallbackDialerProxy: "proxy-out",
+				PassPrimaryConnAddress:        passPrimaryConnAddress,
+			},
+		}
+	}
+
+	runMultiTestCase(t, []TestCase{
+		{
+			Input:  `{"fallback": {"noResponseFallbackDialerProxy": "proxy-out"}}`,
+			Parser: parser,
+			Output: fallback(false),
+		},
+		{
+			Input:  `{"fallback": {"noResponseFallbackDialerProxy": "proxy-out", "passPrimaryConnAddress": true}}`,
+			Parser: parser,
+			Output: fallback(true),
+		},
+	})
+}
+
 func TestHeaderCustomUDPBuild(t *testing.T) {
 	parser := loadJSON(func() Buildable { return new(HeaderCustomUDP) })
 

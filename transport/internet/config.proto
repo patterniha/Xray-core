@@ -198,6 +198,12 @@ message FallbackConfig {
   // No-response fallback timer in milliseconds, measured from connect; 0 means
   // only on FIN/RST/error.
   int32 wait_ms = 5;
+  // PassPrimaryConnAddress applies only to no_response_fallback_dialer_proxy:
+  // when true, the fallback outbound is given the primary connection's remote
+  // address (IP and port) as the target instead of the original target, which
+  // may be an unresolved domain. Useful when the fallback outbound should reach
+  // exactly the address the primary dial connected to.
+  bool pass_primary_conn_address = 6;
 }
 
 message HappyEyeballsConfig {

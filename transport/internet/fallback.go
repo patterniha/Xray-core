@@ -25,7 +25,7 @@ func applyResponseFallback(ctx context.Context, dest net.Destination, sockopt *S
 		maxBuf = defaultFallbackBuffer
 	}
 	waitMs := time.Duration(sockopt.Fallback.WaitMs) * time.Millisecond
-	return newFallbackConn(conn, dest, sockopt.Fallback.NoResponseFallbackDialerProxy, maxBuf, waitMs, func(tag string, d net.Destination) (net.Conn, error) {
+	return newFallbackConn(conn, dest, sockopt.Fallback.NoResponseFallbackDialerProxy, maxBuf, waitMs, sockopt.Fallback.PassPrimaryConnAddress, func(tag string, d net.Destination) (net.Conn, error) {
 		return DialThroughOutbound(ctx, d, tag)
 	})
 }
@@ -55,12 +55,18 @@ type fallbackConn struct {
 	tag          string
 	dialOutbound func(tag string, dest net.Destination) (net.Conn, error)
 
+	// primaryDest, when non-nil, replaces dest as the fallback dial target: it
+	// is the primary conn's remote address (IP and port), captured when the
+	// conn is wrapped (right after a successful dial), since RemoteAddr may be
+	// unreliable on a conn that has already failed.
+	primaryDest *net.Destination
+
 	waitMs   time.Duration
 	waitStop chan struct{}
 	wsOnce   sync.Once
 }
 
-func newFallbackConn(conn net.Conn, dest net.Destination, tag string, maxBuf int, waitMs time.Duration, dialOutbound func(string, net.Destination) (net.Conn, error)) net.Conn {
+func newFallbackConn(conn net.Conn, dest net.Destination, tag string, maxBuf int, waitMs time.Duration, passPrimaryAddr bool, dialOutbound func(string, net.Destination) (net.Conn, error)) net.Conn {
 	c := &fallbackConn{
 		inner:        conn,
 		maxBuf:       maxBuf,
@@ -72,6 +78,12 @@ func newFallbackConn(conn net.Conn, dest net.Destination, tag string, maxBuf int
 		waitStop:     make(chan struct{}),
 	}
 	c.cond = sync.NewCond(&c.mu)
+	if passPrimaryAddr {
+		if addr, ok := conn.RemoteAddr().(*net.TCPAddr); ok && len(addr.IP) > 0 {
+			d := net.DestinationFromAddr(addr)
+			c.primaryDest = &d
+		}
+	}
 	if c.armed && waitMs > 0 {
 		go c.watchWait()
 	}
@@ -183,7 +195,11 @@ func (c *fallbackConn) fallback(p []byte, origErr error) (int, error) {
 	oldInner := c.inner
 	c.mu.Unlock()
 
-	newConn, err := c.dialOutbound(c.tag, c.dest)
+	target := c.dest
+	if c.primaryDest != nil {
+		target = *c.primaryDest
+	}
+	newConn, err := c.dialOutbound(c.tag, target)
 	if err != nil {
 		c.fail()
 		return 0, origErr

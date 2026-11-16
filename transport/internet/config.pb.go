@@ -988,9 +988,15 @@ type FallbackConfig struct {
 	MaxBufferSize int32 `protobuf:"varint,4,opt,name=max_buffer_size,json=maxBufferSize,proto3" json:"max_buffer_size,omitempty"`
 	// No-response fallback timer in milliseconds, measured from connect; 0 means
 	// only on FIN/RST/error.
-	WaitMs        int32 `protobuf:"varint,5,opt,name=wait_ms,json=waitMs,proto3" json:"wait_ms,omitempty"`
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
+	WaitMs int32 `protobuf:"varint,5,opt,name=wait_ms,json=waitMs,proto3" json:"wait_ms,omitempty"`
+	// PassPrimaryConnAddress applies only to no_response_fallback_dialer_proxy:
+	// when true, the fallback outbound is given the primary connection's remote
+	// address (IP and port) as the target instead of the original target, which
+	// may be an unresolved domain. Useful when the fallback outbound should reach
+	// exactly the address the primary dial connected to.
+	PassPrimaryConnAddress bool `protobuf:"varint,6,opt,name=pass_primary_conn_address,json=passPrimaryConnAddress,proto3" json:"pass_primary_conn_address,omitempty"`
+	unknownFields          protoimpl.UnknownFields
+	sizeCache              protoimpl.SizeCache
 }
 
 func (x *FallbackConfig) Reset() {
@@ -1056,6 +1062,13 @@ func (x *FallbackConfig) GetWaitMs() int32 {
 		return x.WaitMs
 	}
 	return 0
+}
+
+func (x *FallbackConfig) GetPassPrimaryConnAddress() bool {
+	if x != nil {
+		return x.PassPrimaryConnAddress
+	}
+	return false
 }
 
 type HappyEyeballsConfig struct {
@@ -1224,13 +1237,14 @@ const file_transport_internet_config_proto_rawDesc = "" +
 	"\x03Off\x10\x00\x12\n" +
 	"\n" +
 	"\x06TProxy\x10\x01\x12\f\n" +
-	"\bRedirect\x10\x02J\x04\b\x1b\x10\x1c\"\xa3\x02\n" +
+	"\bRedirect\x10\x02J\x04\b\x1b\x10\x1c\"\xde\x02\n" +
 	"\x0eFallbackConfig\x12H\n" +
 	"!failed_dial_fallback_dialer_proxy\x18\x01 \x01(\tR\x1dfailedDialFallbackDialerProxy\x12H\n" +
 	"!no_response_fallback_dialer_proxy\x18\x02 \x01(\tR\x1dnoResponseFallbackDialerProxy\x12<\n" +
 	"\x1bno_ip_fallback_dialer_proxy\x18\x03 \x01(\tR\x17noIpFallbackDialerProxy\x12&\n" +
 	"\x0fmax_buffer_size\x18\x04 \x01(\x05R\rmaxBufferSize\x12\x17\n" +
-	"\await_ms\x18\x05 \x01(\x05R\x06waitMs\"\xdd\x02\n" +
+	"\await_ms\x18\x05 \x01(\x05R\x06waitMs\x129\n" +
+	"\x19pass_primary_conn_address\x18\x06 \x01(\bR\x16passPrimaryConnAddress\"\xdd\x02\n" +
 	"\x13HappyEyeballsConfig\x12'\n" +
 	"\x0fprioritize_ipv6\x18\x01 \x01(\bR\x0eprioritizeIpv6\x12\x1e\n" +
 	"\n" +

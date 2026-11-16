@@ -15,6 +15,7 @@ type SockoptFallback struct {
 	NoIPFallbackDialerProxy       string `json:"noIPFallbackDialerProxy"`
 	MaxBufferSize                 int32  `json:"maxBufferSize"`
 	WaitMs                        int32  `json:"waitMs"`
+	PassPrimaryConnAddress        bool   `json:"passPrimaryConnAddress"`
 }
 
 type CustomSockoptConfig struct {
@@ -202,6 +203,7 @@ func (c *SocketConfig) Build() (*internet.SocketConfig, error) {
 			NoIpFallbackDialerProxy:       c.Fallback.NoIPFallbackDialerProxy,
 			MaxBufferSize:                 c.Fallback.MaxBufferSize,
 			WaitMs:                        c.Fallback.WaitMs,
+			PassPrimaryConnAddress:        c.Fallback.PassPrimaryConnAddress,
 		}
 	}
 
