@@ -18,17 +18,18 @@ import (
 )
 
 type FreedomConfig struct {
-	TargetStrategy string                    `json:"targetStrategy"`
-	DomainStrategy string                    `json:"domainStrategy"`
-	Redirect       string                    `json:"redirect"`
-	UserLevel      uint32                    `json:"userLevel"`
-	Fragment       *Fragment                 `json:"fragment"`
-	Noise          *Noise                    `json:"noise"`
-	Noises         []*Noise                  `json:"noises"`
-	ProxyProtocol  uint32                    `json:"proxyProtocol"`
-	IPsBlocked     *StringList               `json:"ipsBlocked"`
-	FinalRules     []*FreedomFinalRuleConfig `json:"finalRules"`
-	Close          *FreedomClose             `json:"close"`
+	TargetStrategy string                   `json:"targetStrategy"`
+	DomainStrategy string                   `json:"domainStrategy"`
+	Redirect       string                   `json:"redirect"`
+	UserLevel      uint32                   `json:"userLevel"`
+	Fragment       *Fragment                `json:"fragment"`
+	Noise          *Noise                   `json:"noise"`
+	Noises         []*Noise                 `json:"noises"`
+	ProxyProtocol  uint32                   `json:"proxyProtocol"`
+	IPsBlocked     *StringList              `json:"ipsBlocked"`
+	Firewall       []*FreedomFirewallConfig `json:"firewall"`
+	FinalRules     []*FreedomFirewallConfig `json:"finalRules"`
+	Close          *FreedomClose            `json:"close"`
 }
 
 type Fragment struct {
@@ -45,21 +46,45 @@ type Noise struct {
 	ApplyTo string      `json:"applyTo"`
 }
 
-type FreedomFinalRuleConfig struct {
-	Action     string       `json:"action"`
-	Network    *NetworkList `json:"network"`
-	Port       *PortList    `json:"port"`
-	IP         *StringList  `json:"ip"`
-	Delay      *Int32Range  `json:"delay"`
-	LogLevel   string       `json:"logLevel"`
-	BlockDelay *Int32Range  `json:"blockDelay"`
+type FreedomFirewallConfig struct {
+	Action     string              `json:"action"`
+	Network    *NetworkList        `json:"network"`
+	Port       *PortList           `json:"port"`
+	IP         *StringList         `json:"ip"`
+	Delay      *Int32Range         `json:"delay"`
+	LogLevel   string              `json:"logLevel"`
+	Reply      *FreedomReplyConfig `json:"reply"`
+	BlockDelay *Int32Range         `json:"blockDelay"`
+}
+
+type FreedomReplyConfig struct {
+	Type               string `json:"type"`
+	CustomResponseData string `json:"customResponseData"`
+}
+
+func (c *FreedomReplyConfig) Build() (*freedom.Reply, error) {
+	replyType := strings.ToLower(c.Type)
+	switch replyType {
+	case "none", "":
+		return &freedom.Reply{Type: "none"}, nil
+	case "http":
+		return &freedom.Reply{Type: "http"}, nil
+	case "custom":
+		data, err := base64.StdEncoding.DecodeString(c.CustomResponseData)
+		if err != nil {
+			return nil, errors.New("failed to decode custom reply data: " + err.Error())
+		}
+		return &freedom.Reply{Type: "custom", CustomResponseData: data}, nil
+	default:
+		return nil, errors.New("unknown firewall reply: " + replyType)
+	}
 }
 
 // Build implements Buildable
 func (c *FreedomConfig) Build() (proto.Message, error) {
 	if c.IPsBlocked != nil {
 		// todo: remove legacy
-		errors.LogWarning(context.Background(), `The feature "ipsBlocked" has been removed and migrated to "finalRules". Please update your config(s) according to release note and documentation.`)
+		errors.LogWarning(context.Background(), `The feature "ipsBlocked" has been removed and migrated to "firewall". Please update your config(s) according to release note and documentation.`)
 	}
 
 	config := new(freedom.Config)
@@ -185,15 +210,22 @@ func (c *FreedomConfig) Build() (proto.Message, error) {
 	}
 
 	if c.ProxyProtocol > 0 && c.ProxyProtocol <= 2 {
-		config.ProxyProtocol = c.ProxyProtocol
+		errors.PrintDeprecatedFeatureWarning(`"proxyProtocol" in Freedom`, `"proxy-protocol" in "streamSettings.finalmask.tcp"`)
 	}
 
-	for _, r := range c.FinalRules {
+	firewall := c.Firewall
+	if c.FinalRules != nil {
+		errors.PrintDeprecatedFeatureWarning("finalRules", "firewall")
+		if firewall == nil {
+			firewall = c.FinalRules
+		}
+	}
+	for _, r := range firewall {
 		rule, err := r.Build()
 		if err != nil {
 			return nil, err
 		}
-		config.FinalRules = append(config.FinalRules, rule)
+		config.Firewall = append(config.Firewall, rule)
 	}
 
 	if c.Close != nil {
@@ -357,8 +389,8 @@ func ParseNoise(noise *Noise) (*freedom.Noise, error) {
 	return NConfig, nil
 }
 
-func (c *FreedomFinalRuleConfig) Build() (*freedom.FinalRuleConfig, error) {
-	rule := &freedom.FinalRuleConfig{}
+func (c *FreedomFirewallConfig) Build() (*freedom.FirewallConfig, error) {
+	rule := &freedom.FirewallConfig{}
 
 	switch strings.ToLower(c.Action) {
 	case "allow":
@@ -386,13 +418,13 @@ func (c *FreedomFinalRuleConfig) Build() (*freedom.FinalRuleConfig, error) {
 	}
 
 	if c.BlockDelay != nil {
-		errors.PrintDeprecatedFeatureWarning("finalRules.blockDelay", "finalRules.delay")
+		errors.PrintDeprecatedFeatureWarning("firewall.blockDelay", "firewall.delay")
 		c.Delay = c.BlockDelay
 	}
 
 	if rule.Action != freedom.RuleAction_Block {
-		if c.Delay != nil || c.LogLevel != "" {
-			return nil, errors.New("delay and logLevel are only supported for block finalRules")
+		if c.Delay != nil || c.LogLevel != "" || c.Reply != nil {
+			return nil, errors.New("delay, logLevel and reply are only supported for firewall action block")
 		}
 		return rule, nil
 	}
@@ -402,6 +434,14 @@ func (c *FreedomFinalRuleConfig) Build() (*freedom.FinalRuleConfig, error) {
 			Min: uint64(c.Delay.From),
 			Max: uint64(c.Delay.To),
 		}
+	}
+
+	if c.Reply != nil {
+		reply, err := c.Reply.Build()
+		if err != nil {
+			return nil, err
+		}
+		rule.Reply = reply
 	}
 
 	switch strings.ToLower(c.LogLevel) {
@@ -416,7 +456,7 @@ func (c *FreedomFinalRuleConfig) Build() (*freedom.FinalRuleConfig, error) {
 	case "error":
 		rule.LogLevel = log.Severity_Error.Enum()
 	default:
-		return nil, errors.New("unknown finalRules.logLevel: ", c.LogLevel)
+		return nil, errors.New("unknown firewall.logLevel: ", c.LogLevel)
 	}
 
 	return rule, nil
