@@ -224,4 +224,10 @@ message HappyEyeballsConfig {
   }
 
   SuccessDefinition success_definition = 5;
+
+  // AssuranceFirstInterleave makes the first turn of each IP family try at
+  // least interleave IPs: a family with fewer IPs has its original list
+  // appended until it holds at least interleave IPs, so each IP appears the
+  // same number of times.
+  bool assurance_first_interleave = 6;
 }

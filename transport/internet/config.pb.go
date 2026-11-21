@@ -1078,8 +1078,13 @@ type HappyEyeballsConfig struct {
 	TryDelayMs        uint64                                `protobuf:"varint,3,opt,name=try_delayMs,json=tryDelayMs,proto3" json:"try_delayMs,omitempty"`
 	MaxConcurrentTry  uint32                                `protobuf:"varint,4,opt,name=max_concurrent_try,json=maxConcurrentTry,proto3" json:"max_concurrent_try,omitempty"`
 	SuccessDefinition HappyEyeballsConfig_SuccessDefinition `protobuf:"varint,5,opt,name=success_definition,json=successDefinition,proto3,enum=xray.transport.internet.HappyEyeballsConfig_SuccessDefinition" json:"success_definition,omitempty"`
-	unknownFields     protoimpl.UnknownFields
-	sizeCache         protoimpl.SizeCache
+	// AssuranceFirstInterleave makes the first turn of each IP family try at
+	// least interleave IPs: a family with fewer IPs has its original list
+	// appended until it holds at least interleave IPs, so each IP appears the
+	// same number of times.
+	AssuranceFirstInterleave bool `protobuf:"varint,6,opt,name=assurance_first_interleave,json=assuranceFirstInterleave,proto3" json:"assurance_first_interleave,omitempty"`
+	unknownFields            protoimpl.UnknownFields
+	sizeCache                protoimpl.SizeCache
 }
 
 func (x *HappyEyeballsConfig) Reset() {
@@ -1145,6 +1150,13 @@ func (x *HappyEyeballsConfig) GetSuccessDefinition() HappyEyeballsConfig_Success
 		return x.SuccessDefinition
 	}
 	return HappyEyeballsConfig_TcpConnected
+}
+
+func (x *HappyEyeballsConfig) GetAssuranceFirstInterleave() bool {
+	if x != nil {
+		return x.AssuranceFirstInterleave
+	}
+	return false
 }
 
 var File_transport_internet_config_proto protoreflect.FileDescriptor
@@ -1244,7 +1256,7 @@ const file_transport_internet_config_proto_rawDesc = "" +
 	"\x1bno_ip_fallback_dialer_proxy\x18\x03 \x01(\tR\x17noIpFallbackDialerProxy\x12&\n" +
 	"\x0fmax_buffer_size\x18\x04 \x01(\x05R\rmaxBufferSize\x12\x17\n" +
 	"\await_ms\x18\x05 \x01(\x05R\x06waitMs\x129\n" +
-	"\x19pass_primary_conn_address\x18\x06 \x01(\bR\x16passPrimaryConnAddress\"\xdd\x02\n" +
+	"\x19pass_primary_conn_address\x18\x06 \x01(\bR\x16passPrimaryConnAddress\"\x9b\x03\n" +
 	"\x13HappyEyeballsConfig\x12'\n" +
 	"\x0fprioritize_ipv6\x18\x01 \x01(\bR\x0eprioritizeIpv6\x12\x1e\n" +
 	"\n" +
@@ -1253,7 +1265,8 @@ const file_transport_internet_config_proto_rawDesc = "" +
 	"\vtry_delayMs\x18\x03 \x01(\x04R\n" +
 	"tryDelayMs\x12,\n" +
 	"\x12max_concurrent_try\x18\x04 \x01(\rR\x10maxConcurrentTry\x12m\n" +
-	"\x12success_definition\x18\x05 \x01(\x0e2>.xray.transport.internet.HappyEyeballsConfig.SuccessDefinitionR\x11successDefinition\"?\n" +
+	"\x12success_definition\x18\x05 \x01(\x0e2>.xray.transport.internet.HappyEyeballsConfig.SuccessDefinitionR\x11successDefinition\x12<\n" +
+	"\x1aassurance_first_interleave\x18\x06 \x01(\bR\x18assuranceFirstInterleave\"?\n" +
 	"\x11SuccessDefinition\x12\x10\n" +
 	"\fTcpConnected\x10\x00\x12\x18\n" +
 	"\x14TlsHandshakeComplete\x10\x01*\xa9\x01\n" +

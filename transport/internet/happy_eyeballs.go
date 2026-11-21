@@ -33,8 +33,9 @@ func raceDial(ctx context.Context, ips []net.IP, sockopt *SocketConfig, domain s
 	interleave := sockopt.HappyEyeballs.Interleave
 	tryDelayMs := time.Duration(sockopt.HappyEyeballs.TryDelayMs) * time.Millisecond
 	maxConcurrentTry := sockopt.HappyEyeballs.MaxConcurrentTry
+	assuranceFirstInterleave := sockopt.HappyEyeballs.AssuranceFirstInterleave
 
-	ips = sortIPs(ips, prioritizeIPv6, interleave)
+	ips = sortIPs(ips, prioritizeIPv6, interleave, assuranceFirstInterleave)
 	newCtx, cancel := context.WithCancel(ctx)
 	defer cancel()
 	resultCh := make(chan *result, len(ips))
@@ -108,7 +109,7 @@ func raceDial(ctx context.Context, ips []net.IP, sockopt *SocketConfig, domain s
 }
 
 // sortIPs sort IPs according to rfc 8305.
-func sortIPs(ips []net.IP, prioritizeIPv6 bool, interleave uint32) []net.IP {
+func sortIPs(ips []net.IP, prioritizeIPv6 bool, interleave uint32, assuranceFirstInterleave bool) []net.IP {
 	if len(ips) == 0 {
 		return ips
 	}
@@ -120,6 +121,25 @@ func sortIPs(ips []net.IP, prioritizeIPv6 bool, interleave uint32) []net.IP {
 			ip4 = append(ip4, parsedIp)
 		} else {
 			ip6 = append(ip6, parsedIp)
+		}
+	}
+
+	if assuranceFirstInterleave {
+		// Append each family's original IPs until there are at least interleave
+		// of them, so that its first turn tries interleave IPs and every IP
+		// appears the same number of times.
+		initialIP4, initialIP6 := ip4, ip6
+		for len(initialIP4) > 0 && uint32(len(ip4)) < interleave {
+			ip4 = append(ip4, initialIP4...)
+		}
+		for len(initialIP6) > 0 && uint32(len(ip6)) < interleave {
+			ip6 = append(ip6, initialIP6...)
+		}
+		if len(ip6) == 0 {
+			return ip4
+		}
+		if len(ip4) == 0 {
+			return ip6
 		}
 	}
 
