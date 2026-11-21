@@ -10,14 +10,17 @@ import (
 
 const defaultFallbackBuffer = 16384 // 16 KiB
 
-// applyResponseFallback wraps a successfully dialed conn with the no-response
+// applyResponseFallback wraps a successfully dialed TCP conn with the no-response
 // fallback: if the target sends no byte before the connection ends (FIN/RST/
 // error) or waitMs elapses, the buffered request is replayed to dest through the
 // outbound tagged Fallback.NoResponseFallbackDialerProxy. dest must be the
 // ORIGINAL target (domain preserved, not a resolved IP) so the fallback outbound
-// can resolve/route it itself. conn is returned unchanged when none is configured.
+// can resolve/route it itself, unless passPrimaryConnAddress gives it the primary
+// conn's address. conn is returned unchanged when none is configured, and for
+// non-TCP conns: wrapping UDP would hide the *net.PacketConnWrapper that freedom
+// needs for full-cone UDP.
 func applyResponseFallback(ctx context.Context, dest net.Destination, sockopt *SocketConfig, conn net.Conn) net.Conn {
-	if conn == nil || sockopt == nil || sockopt.Fallback == nil || sockopt.Fallback.NoResponseFallbackDialerProxy == "" {
+	if conn == nil || dest.Network != net.Network_TCP || sockopt == nil || sockopt.Fallback == nil || sockopt.Fallback.NoResponseFallbackDialerProxy == "" {
 		return conn
 	}
 	maxBuf := int(sockopt.Fallback.MaxBufferSize)
