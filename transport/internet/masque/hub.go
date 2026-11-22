@@ -249,11 +249,11 @@ func (l *Listener) Close() error {
 	if l.quicListener != nil {
 		errs = append(errs, l.quicListener.Close())
 	}
-	if l.transport != nil {
-		errs = append(errs, l.transport.Close())
-	}
 	if l.pktConn != nil {
 		errs = append(errs, l.pktConn.Close())
+	}
+	if l.transport != nil {
+		errs = append(errs, l.transport.Close())
 	}
 	if l.tcpListener != nil {
 		errs = append(errs, l.tcpListener.Close())
