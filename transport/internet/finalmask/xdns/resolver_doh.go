@@ -88,7 +88,7 @@ func NewDOHResolver(config *ResolverProto, dialer *finalmask.Dialer) (Resolver, 
 					tr.Close()
 					return nil, err
 				}
-				context.AfterFunc(qc.Context(), func() { tr.Close(); conn.Close() })
+				context.AfterFunc(qc.Context(), func() { conn.Close(); tr.Close() })
 				switch quicParams.Congestion {
 				case "", "reno":
 				case "bbr":
