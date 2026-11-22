@@ -84,6 +84,8 @@ func NewDOHResolver(config *ResolverProto, dialer *finalmask.Dialer) (Resolver, 
 				}
 				qc, err := tr.Dial(ctx, conn.RemoteAddr(), tlsCfg, cfg)
 				if err != nil {
+					conn.Close()
+					tr.Close()
 					return nil, err
 				}
 				context.AfterFunc(qc.Context(), func() { tr.Close(); conn.Close() })

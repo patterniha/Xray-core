@@ -12,7 +12,17 @@ import (
 	"github.com/xtls/reality"
 	"github.com/xtls/xray-core/common/errors"
 	"github.com/xtls/xray-core/transport/internet"
+	"github.com/xtls/xray-core/transport/internet/tls"
 )
+
+// HandshakeTimeout returns the configured deadline of the client's REALITY
+// handshake, or tls.DefaultHandshakeTimeout when unset.
+func (c *Config) HandshakeTimeout() time.Duration {
+	if c == nil || c.TlsHandshakeTimeout <= 0 {
+		return tls.DefaultHandshakeTimeout
+	}
+	return time.Duration(c.TlsHandshakeTimeout) * time.Millisecond
+}
 
 func (c *Config) GetREALITYConfig() *reality.Config {
 	var dialer net.Dialer

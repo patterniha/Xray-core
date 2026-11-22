@@ -30,6 +30,10 @@ message Config {
   string spider_x = 26;
   repeated int64 spider_y = 27;
 
+  // TlsHandshakeTimeout bounds the client's REALITY handshake, in
+  // milliseconds. 0 or unset uses the default of 16000 (16 s).
+  int32 tls_handshake_timeout = 28;
+
   string master_key_log = 31;
 }
 

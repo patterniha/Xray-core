@@ -208,8 +208,8 @@ type Config struct {
 	PinnedPeerCertSha256 [][]byte               `protobuf:"bytes,22,rep,name=pinned_peer_cert_sha256,json=pinnedPeerCertSha256,proto3" json:"pinned_peer_cert_sha256,omitempty"`
 	UseSystemCa          bool                   `protobuf:"varint,23,opt,name=use_system_ca,json=useSystemCa,proto3" json:"use_system_ca,omitempty"`
 	// TlsHandshakeTimeout bounds the TLS handshake, in milliseconds. 0 or unset
-	// keeps the default (unbounded); a positive value applies to uTLS and native
-	// Go TLS alike.
+	// uses the default of 16000 (16 s). It applies to uTLS and native Go TLS
+	// alike.
 	TlsHandshakeTimeout int32 `protobuf:"varint,24,opt,name=tls_handshake_timeout,json=tlsHandshakeTimeout,proto3" json:"tls_handshake_timeout,omitempty"`
 	unknownFields       protoimpl.UnknownFields
 	sizeCache           protoimpl.SizeCache

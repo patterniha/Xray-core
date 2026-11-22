@@ -90,7 +90,7 @@ message Config {
   bool use_system_ca = 23;
 
   // TlsHandshakeTimeout bounds the TLS handshake, in milliseconds. 0 or unset
-  // keeps the default (unbounded); a positive value applies to uTLS and native
-  // Go TLS alike.
+  // uses the default of 16000 (16 s). It applies to uTLS and native Go TLS
+  // alike.
   int32 tls_handshake_timeout = 24;
 }

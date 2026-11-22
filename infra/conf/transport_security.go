@@ -49,6 +49,8 @@ type REALITYConfig struct {
 	ShortId       string `json:"shortId"`
 	Mldsa65Verify string `json:"mldsa65Verify"`
 	SpiderX       string `json:"spiderX"`
+
+	TLSHandshakeTimeout int32 `json:"tlsHandshakeTimeout"`
 }
 
 func (c *REALITYConfig) Build() (proto.Message, error) {
@@ -241,6 +243,10 @@ func (c *REALITYConfig) Build() (proto.Message, error) {
 		u.RawQuery = q.Encode()
 		config.SpiderX = u.String()
 		config.ServerName = c.ServerName
+		if c.TLSHandshakeTimeout < 0 {
+			return nil, errors.New(`"tlsHandshakeTimeout" can't be negative`)
+		}
+		config.TlsHandshakeTimeout = c.TLSHandshakeTimeout
 	}
 	return config, nil
 }

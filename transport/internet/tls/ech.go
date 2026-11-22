@@ -230,6 +230,7 @@ func dnsQuery(server string, domain string, sockopt *internet.SocketConfig) ([]b
 					if !h2c {
 						conn = utls.UClient(conn, &utls.Config{ServerName: host}, fingerprint)
 						if err := conn.(*utls.UConn).HandshakeContext(ctx); err != nil {
+							conn.Close()
 							return nil, err
 						}
 					}

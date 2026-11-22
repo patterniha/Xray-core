@@ -65,11 +65,9 @@ func dialhttpUpgrade(ctx context.Context, dest net.Destination, streamSettings *
 				return conn, nil
 			}
 			conn := tls.Client(pconn, tlsConfig)
-			if tConfig.HandshakeTimeout() > 0 { // native TLS handshakes lazily; bound it eagerly when requested
-				if err := conn.(*tls.Conn).HandshakeContext(hctx); err != nil {
-					conn.Close()
-					return nil, err
-				}
+			if err := conn.(*tls.Conn).HandshakeContext(hctx); err != nil {
+				conn.Close()
+				return nil, err
 			}
 			return conn, nil
 		}

@@ -81,10 +81,14 @@ func Server(c net.Conn, config *tls.Config) net.Conn {
 	return &Conn{Conn: tlsConn}
 }
 
-// HandshakeTimeout returns the configured TLS handshake deadline, or 0 (no bound) when unset.
+// DefaultHandshakeTimeout bounds the TLS handshake when tlsHandshakeTimeout is unset.
+const DefaultHandshakeTimeout = 16 * time.Second
+
+// HandshakeTimeout returns the configured TLS handshake deadline, or
+// DefaultHandshakeTimeout when unset.
 func (c *Config) HandshakeTimeout() time.Duration {
 	if c == nil || c.TlsHandshakeTimeout <= 0 {
-		return 0
+		return DefaultHandshakeTimeout
 	}
 	return time.Duration(c.TlsHandshakeTimeout) * time.Millisecond
 }

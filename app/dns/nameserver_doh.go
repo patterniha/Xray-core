@@ -103,6 +103,7 @@ func NewDoHNameServer(url *url.URL, dispatcher routing.Dispatcher, h2c bool, dis
 			}
 			conn = utls.UClient(conn, &utls.Config{ServerName: url.Hostname()}, fingerprint)
 			if err := conn.(*utls.UConn).HandshakeContext(ctx); err != nil {
+				conn.Close()
 				return nil, err
 			}
 		}
